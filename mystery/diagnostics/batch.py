@@ -7,8 +7,9 @@ investigable, and do all runs pass the integrity checks?
 
 from __future__ import annotations
 
-import resource
+import multiprocessing
 import statistics
+import sys
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
@@ -19,6 +20,40 @@ from mystery.sim.clock import DAY
 from mystery.sim.engine import simulate
 
 MAJOR = {"assault", "collision", "fall"}
+
+
+def peak_memory_mb() -> float | None:
+    """Peak memory of this process, on POSIX (resource) or Windows (psapi); None if unknown."""
+    try:
+        import resource
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return round(peak / (1024 * 1024 if sys.platform == "darwin" else 1024), 1)
+    except ImportError:
+        pass
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class Counters(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        counters = Counters()
+        counters.cb = ctypes.sizeof(Counters)
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi = ctypes.WinDLL("psapi")
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
+        if psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+            return round(counters.PeakWorkingSetSize / (1024 * 1024), 1)
+    except (OSError, AttributeError, ValueError):
+        pass
+    return None
 
 
 def run_one(args: tuple) -> dict:
@@ -55,7 +90,9 @@ def run_batch(runs: int, days: int, profile: str, residents: int = 10, start_see
     jobs = [(start_seed + i, days, profile, residents) for i in range(runs)]
     results = []
     if workers > 1:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
+        # 'spawn' is the only start method on Windows; using it everywhere keeps platforms identical.
+        ctx = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=min(workers, 61), mp_context=ctx) as pool:
             for i, res in enumerate(pool.map(run_one, jobs, chunksize=max(1, runs // (workers * 4)))):
                 results.append(res)
                 if progress:
@@ -117,7 +154,7 @@ def summarise(results: list[dict], profile: str, days: int, residents: int) -> d
         "runtime_per_100_days_s": round(statistics.mean(runtimes) * 100 / days, 3) if runtimes else 0,
         "events_per_run": round(statistics.mean(r["events"] for r in results), 1) if results else 0,
         "beliefs_per_run": round(statistics.mean(r["beliefs"] for r in results), 1) if results else 0,
-        "peak_memory_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1),
+        "peak_memory_mb": peak_memory_mb(),
         "incidents_per_run": {k: round(v / n, 2) for k, v in sorted(fam.items())},
         "deaths": deaths,
         "runs_without_incident": no_incident,

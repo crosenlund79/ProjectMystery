@@ -9,9 +9,40 @@ noticed, the case is frozen. You then investigate it through what people actuall
 are willing to say. When you submit a theory or give up, the sealed truth is revealed next to your notebook.
 
 There's no scripting. Every clue, lie, rumour and mistake comes from simulated state. Pure Python 3.10+,
-no dependencies.
+no dependencies. Works on Windows, macOS and Linux.
 
-## Quick start
+## Windows: double-click to play
+
+1. Install Python 3.10 or newer from [python.org](https://www.python.org/downloads/windows/). On the first
+   screen of the installer, tick **Add python.exe to PATH**. (Alternatively, run
+   `winget install -e --id Python.Python.3.12`, or install Python 3.12 from the Microsoft Store.)
+2. Download or clone this repository. If you downloaded a `.zip`, right-click it and choose **Extract All…**;
+   the launchers must stay next to the `mystery` folder.
+3. Double-click one of the launchers:
+
+| Launcher | What it is for |
+|---|---|
+| **`Play-Mystery.cmd`** | **The game, spoiler-free.** Start a new case (pick the kind of season and how much the town gives away), open a saved case, or read how to play. It never shows anything from the sealed truth. The truth appears only through the in-game `reveal` command, after you submit a theory or give up. |
+| **`Mystery-Lab.cmd`** | **The simulation laboratory, with spoilers.** Simulate towns and see who did what, run batch reports, find and export cases, read a case's sealed truth, check replays, and run the test suite. Each action prints the equivalent `python -m mystery ...` command. |
+
+Both launchers find Python by trying `MYSTERY_PYTHON`, then `py -3`, then `python`, then `python3`, and they
+accept only version 3.10 or newer. If no suitable Python is found, they explain how to install one. If anything
+goes wrong, the window stays open so you can read the message. Cases and notes are saved under `runs\cases`,
+so you can close the window and continue later.
+
+Troubleshooting:
+
+* **"Windows protected your PC"** (SmartScreen) can appear for files downloaded from the internet. Choose
+  **More info → Run anyway**, or right-click the file, then **Properties → Unblock**.
+* **Python is installed but isn't found.** Close and reopen the window first. If it still fails, turn off the
+  `python.exe` and `python3.exe` entries under *Settings → Apps → Advanced app settings → App execution aliases*
+  (they are Microsoft Store placeholders). Or set `MYSTERY_PYTHON` to the full path of `python.exe`.
+* The command line works on Windows too: use `py -m mystery ...` wherever this README says `python -m mystery`.
+
+The menus behind the launchers also work on any OS: `python -m mystery.launcher play` or
+`python -m mystery.launcher lab`.
+
+## Quick start (command line)
 
 ```bash
 python -m mystery simulate --seed 7 --days 60 --profile normal
@@ -133,7 +164,8 @@ cite, minus hints. An honest "unresolved" scores well when the evidence really w
 
 ## Acceptance checks
 
-All of these run with `python -m unittest discover -s tests -t .` (about 12 seconds).
+All of these run with `python -m unittest discover -s tests -t .` (about 25 seconds), or with option 7 in
+`Mystery-Lab.cmd`.
 
 | Check (from the concept, §12) | How it is verified |
 |---|---|
@@ -148,6 +180,25 @@ All of these run with `python -m unittest discover -s tests -t .` (about 12 seco
 | One incident playable from start to theory to reveal | `test_cases.EndToEnd` drives the text UI through a whole case |
 | Batch report separates quiet runs, major incidents, candidates and suitable cases | `test_cases.Batch` + `simulate-batch` |
 
+### Testing the Windows launchers
+
+`tests/test_launchers.py` exercises the menus behind both launchers on every OS using scripted input. It checks
+that the gameplay flow never reads `truth.json` until a case is concluded. It also checks the `.cmd` files
+statically: CRLF line endings, `py`/`python` search order, the 3.10 minimum, and that the window is held on
+errors. When the suite runs on Windows, it executes both launchers for real.
+
+On Linux, `python3 tools/wine/run_launcher_tests.py` runs both `.cmd` files through Wine's real `cmd.exe`
+(it needs the `wine` and `gcc-mingw-w64-x86-64` packages). The `py.exe` and `python.exe` it puts on the path
+are small shims built from `tools/wine/shim.c`. They forward to the local Python, or pretend to be an old one,
+so no downloaded Windows binaries are run. It covers 14 scenarios:
+
+* Python found through `py`, through `python` or through `MYSTERY_PYTHON` (with spaces in the path).
+* No Python at all, and only Python 3.8.
+* A crash that keeps the window open, and `MYSTERY_NO_PAUSE`.
+* A launcher copied out of its folder.
+* A full play session: generating, continuing, giving up and revealing, with no truth leaking before the reveal.
+* The lab menu.
+
 ## Repository map
 
 ```text
@@ -157,6 +208,9 @@ mystery/
   investigate/  session (spoiler-safe), dialogue, notebook, verdict (the only truth reader), text UI
   diagnostics/  integrity checks and batch reports
   cli.py        python -m mystery ...
+  launcher.py   the menus behind the launchers (play: spoiler-free; lab: developer tools)
+Play-Mystery.cmd, Mystery-Lab.cmd   double-click launchers for Windows
+tools/          find-python.cmd (shared by the launchers); wine/ launcher test harness
 tests/          unittest acceptance suite
 docs/           the concept document and prototype notes
 runs/           generated runs and cases (git-ignored)

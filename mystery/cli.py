@@ -253,5 +253,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--case", required=True)
     p.set_defaults(func=cmd_truth)
 
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")  # a console without a glyph must not crash the run
+        except (AttributeError, ValueError):
+            pass
     args = parser.parse_args(argv)
     return args.func(args)
