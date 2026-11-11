@@ -1,0 +1,27 @@
+; Engine configuration file.
+; Project Mystery - the playable investigation. See docs/godot-migration.md.
+
+config_version=5
+
+[application]
+
+config/name="Project Mystery"
+config/description="A small town. Something happened. Find out what - if you can."
+config/version="0.2.0"
+run/main_scene="res://scenes/main.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="ProjectMystery"
+config/features=PackedStringArray("4.3")
+config/icon="res://icon.svg"
+run/low_processor_mode=true
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/stretch/mode="disabled"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

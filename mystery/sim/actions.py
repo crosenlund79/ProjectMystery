@@ -33,6 +33,11 @@ INJURY_TEXT = {
 }
 
 
+def _title(text: str) -> str:
+    """Title case that leaves "Drover's" alone (str.title() would give "Drover'S")."""
+    return " ".join(w[:1].upper() + w[1:] for w in text.split(" "))
+
+
 # ============================================================== dispatch
 def perform(sim: "Simulation", r: "Resident", plan: Plan, ta: int) -> None:
     k = plan.kind
@@ -578,12 +583,12 @@ def assault(sim: "Simulation", aggressor: "Resident", victim: "Resident", cause,
         witnesses = [y for y in bystanders if sim.residents[y].alive]
         if witnesses:
             sim.discover(inc, witnesses[0], t, ev.id, f"{victim.name} died after being attacked at {place} "
-                         f"around {fmt_clock(t)} on Day {day_of(t)}.", f"The Death at {place.title()}",
+                         f"around {fmt_clock(t)} on Day {day_of(t)}.", f"The Death at {_title(place)}",
                          [t - 30, t + 30], here)
     else:
         injure(sim, victim, severity, ev, INJURY_TEXT[("assault", severity)])
         sim.discover(inc, victim.id, t, ev.id, f"{victim.name} was hurt in a fight at {place} around "
-                     f"{fmt_clock(t)} on Day {day_of(t)}: {victim.injury_desc}.", f"The Fight at {place.title()}",
+                     f"{fmt_clock(t)} on Day {day_of(t)}: {victim.injury_desc}.", f"The Fight at {_title(place)}",
                      [t - 30, t + 30], here)
 
 
@@ -714,7 +719,7 @@ def loss_discovered(sim: "Simulation", c, counter: str, t: int, short_cash: int,
         hook = (f"{sim.residents[counter].name} counted the stock room at {place} at {fmt(t)} and found "
                 f"{short_food} units missing since {fmt(c.last_check)}.")
     else:
-        title = f"The Short Till at {place.title()}"
+        title = f"The Short Till at {_title(place)}"
         hook = (f"{sim.residents[counter].name} counted {c.label} at {fmt(t)} and found {short_cash} crowns missing. "
                 f"It last balanced at {fmt(c.last_check)}.")
     if forced:

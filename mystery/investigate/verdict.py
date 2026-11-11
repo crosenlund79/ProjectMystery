@@ -80,10 +80,13 @@ def _cites(truth: dict, theory: dict | None) -> tuple[int, list[str]]:
     return min(20, 5 * good) - 3 * bad, notes
 
 
-def reveal(inv: "Investigation") -> list[str]:
+def reveal_model(inv: "Investigation") -> dict | None:
+    """Score the theory and open the sealed truth. None while the case is still open.
+
+    This is the reveal contract the Godot game reproduces; reveal() only formats it."""
     st = inv.state
     if not st["concluded"]:
-        return ["The truth stays sealed until you submit a theory ('submit') or give up ('giveup')."]
+        return None
     truth = load_truth(inv.case_dir)
     theory = st.get("theory")
     if theory is not None:
@@ -99,37 +102,34 @@ def reveal(inv: "Investigation") -> list[str]:
     inv.save()
     names = {rid: p["name"] for rid, p in truth["private_states"].items()}
     ans = truth["answer"]
-    out = ["", "=" * 70, "THE TRUTH", "=" * 70, truth["narrative"], ""]
-    out.append(f"Explanation: {MECHANISM_LABELS.get(ans['mechanism'], ans['mechanism'])}")
-    out.append(f"Responsible: {names.get(ans['responsible'], 'no one')}")
-    out.append(f"Outcome: {ans['outcome'].replace('_', ' ')}; motive: "
-               + ", ".join(MOTIVES.get(m, m) for m in ans["motives"]))
+    model: dict = {
+        "narrative": truth["narrative"],
+        "answer": {"mechanism": MECHANISM_LABELS.get(ans["mechanism"], ans["mechanism"]),
+                   "responsible": names.get(ans["responsible"], "no one"),
+                   "outcome": ans["outcome"].replace("_", " "),
+                   "motives": [MOTIVES.get(m, m) for m in ans["motives"]]},
+        "theory": None,
+        "score": {"total": result["total"], "parts": [[k, v] for k, v in result["parts"].items()],
+                  "notes": list(result["notes"])},
+        "timeline": [], "annotations": [], "plain_true": 0, "missed": [], "assessment": "",
+    }
     if theory is not None:
-        out.append("")
-        out.append(f"Your theory: {MECHANISM_LABELS.get(theory['mechanism'], theory['mechanism'])}; "
-                   f"responsible: {names.get(theory['responsible'], 'no one')}; "
-                   f"motive: {MOTIVES.get(theory['motive'], theory['motive'])}")
-    out.append("")
-    out.append(f"SCORE: {result['total']}/100  " + ", ".join(f"{k} {v:+d}" for k, v in result["parts"].items()))
-    for n in result["notes"]:
-        out.append(f"  - {n}")
-    out += ["", "WHAT ACTUALLY HAPPENED"]
+        model["theory"] = {"mechanism": MECHANISM_LABELS.get(theory["mechanism"], theory["mechanism"]),
+                           "responsible": names.get(theory["responsible"], "no one"),
+                           "motive": MOTIVES.get(theory["motive"], theory["motive"])}
     seen = set()
-    timeline = sorted(truth["chain"] + truth["responsible_movements"], key=lambda e: (e["time"], e["id"]))
-    for ev in timeline:
+    for ev in sorted(truth["chain"] + truth["responsible_movements"], key=lambda e: (e["time"], e["id"])):
         if ev["id"] in seen or ev["kind"] in ("meal",):
             continue
         seen.add(ev["id"])
-        out.append(f"  {fmt(ev['time'])}  {ev['summary']}")
-    out += ["", "YOUR NOTEBOOK, CHECKED AGAINST THE TRUTH"]
+        model["timeline"].append({"time": ev["time"], "label": fmt(ev["time"]), "summary": ev["summary"]})
     cited = set((theory or {}).get("cites", []))
-    plain_true = 0
     for e in inv.notebook.entries():
         ref = e.get("ref")
         verdict = ""
         if (ref in truth["testimony_audit"] and truth["testimony_audit"][ref]["status"] in ("accurate", "unverifiable")
                 and e["id"] not in cited and not truth["testimony_audit"][ref].get("supports")):
-            plain_true += 1
+            model["plain_true"] += 1
             continue
         if ref and ref in truth["testimony_audit"]:
             a = truth["testimony_audit"][ref]
@@ -144,26 +144,55 @@ def reveal(inv: "Investigation") -> list[str]:
             else:
                 verdict = "true"
         elif ref and ref in truth["evidence_audit"]:
-            a = truth["evidence_audit"][ref]
-            verdict = f"left by: {a['event_summary']}"
+            verdict = f"left by: {truth['evidence_audit'][ref]['event_summary']}"
         elif ref and ref in truth["record_audit"]:
             verdict = f"records: {truth['record_audit'][ref]['event_summary']}"
         if verdict:
-            star = " (cited)" if e["id"] in cited else ""
-            out.append(f"  [{e['id']}]{star} {e['text']}")
-            out.append(f"        -> {verdict}")
-    if plain_true:
-        out.append(f"  ...and {plain_true} other statement(s) you collected were true but beside the point.")
+            model["annotations"].append({"entry": e["id"], "text": e["text"], "verdict": verdict,
+                                         "cited": e["id"] in cited})
     found = {e.get("ref") for e in inv.notebook.entries()}
-    missed = []
     for ch in truth["suitability"]["channels"]:
         if ch["strength"] in ("strong", "hearsay") and not any(k in found for k in ch["keys"]):
             src = names.get(ch["source"]) or truth.get("place_names", {}).get(ch["source"], ch["source"])
-            missed.append(f"  - {ch['type']} ({src}){' — needed pressing' if ch.get('needs_pressing') else ''}")
-    if missed:
-        out += ["", "LEADS YOU DID NOT FOLLOW"] + missed
+            model["missed"].append({"type": ch["type"], "source": src,
+                                    "needs_pressing": bool(ch.get("needs_pressing"))})
     s = truth["suitability"]
-    out += ["", f"Case assessment: {s['verdict']} — {s['independent_channels']} independent channel(s), "
-                f"{s['red_herrings']} source(s) of misleading information, "
-                f"{s['lies_by_responsible']} lie(s) by the person responsible."]
+    model["assessment"] = (f"{s['verdict']} — {s['independent_channels']} independent channel(s), "
+                           f"{s['red_herrings']} source(s) of misleading information, "
+                           f"{s['lies_by_responsible']} lie(s) by the person responsible.")
+    return model
+
+
+def reveal(inv: "Investigation") -> list[str]:
+    model = reveal_model(inv)
+    if model is None:
+        return ["The truth stays sealed until you submit a theory ('submit') or give up ('giveup')."]
+    ans = model["answer"]
+    out = ["", "=" * 70, "THE TRUTH", "=" * 70, model["narrative"], ""]
+    out.append(f"Explanation: {ans['mechanism']}")
+    out.append(f"Responsible: {ans['responsible']}")
+    out.append(f"Outcome: {ans['outcome']}; motive: " + ", ".join(ans["motives"]))
+    if model["theory"] is not None:
+        th = model["theory"]
+        out.append("")
+        out.append(f"Your theory: {th['mechanism']}; responsible: {th['responsible']}; motive: {th['motive']}")
+    out.append("")
+    sc = model["score"]
+    out.append(f"SCORE: {sc['total']}/100  " + ", ".join(f"{k} {v:+d}" for k, v in sc["parts"]))
+    for n in sc["notes"]:
+        out.append(f"  - {n}")
+    out += ["", "WHAT ACTUALLY HAPPENED"]
+    out += [f"  {ev['label']}  {ev['summary']}" for ev in model["timeline"]]
+    out += ["", "YOUR NOTEBOOK, CHECKED AGAINST THE TRUTH"]
+    for a in model["annotations"]:
+        star = " (cited)" if a["cited"] else ""
+        out.append(f"  [{a['entry']}]{star} {a['text']}")
+        out.append(f"        -> {a['verdict']}")
+    if model["plain_true"]:
+        out.append(f"  ...and {model['plain_true']} other statement(s) you collected were true but beside the point.")
+    if model["missed"]:
+        out += ["", "LEADS YOU DID NOT FOLLOW"]
+        out += [f"  - {m['type']} ({m['source']}){' — needed pressing' if m['needs_pressing'] else ''}"
+                for m in model["missed"]]
+    out += ["", f"Case assessment: {model['assessment']}"]
     return out

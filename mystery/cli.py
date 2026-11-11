@@ -197,6 +197,79 @@ def cmd_truth(args) -> int:
     return 0
 
 
+def cmd_export_godot(args) -> int:
+    from mystery.cases.export import snapshot_hook
+    from mystery.cases.package import build_package, validate_package, write_package
+    from mystery.sim.engine import simulate
+    hook, store = snapshot_hook(selected=args.incident)
+    simulate(args.seed, args.days, args.profile, args.residents, case_hook=hook)
+    if args.incident not in store:
+        print(f"Incident {args.incident} did not become a case in this run. Try 'list-incidents'.")
+        return 1
+    pkg = build_package(store[args.incident])
+    problems = validate_package(pkg)
+    if problems:
+        print("Package failed validation:", *problems[:10], sep="\n  ")
+        return 2
+    path = write_package(pkg, args.out)
+    print(f"Wrote {path} ({pkg['summary']['title']}, {pkg['summary']['difficulty']}).")
+    print("In the game: Load Case > Import a case file, or copy it into godot/cases and rebuild the index.")
+    return 0
+
+
+def cmd_validate_case(args) -> int:
+    from mystery.cases.package import read_package, unseal, validate_package
+    worst = 0
+    for path in args.files:
+        try:
+            pkg = read_package(path)
+            problems = validate_package(pkg)
+            if not problems:
+                unseal(pkg["sealed_truth"], pkg["case_id"])  # proves the seal opens; prints nothing from it
+        except (OSError, ValueError) as e:
+            problems = [str(e)]
+        print(f"{'OK  ' if not problems else 'FAIL'} {path}")
+        for p in problems[:20]:
+            print(f"     {p}")
+        worst = max(worst, 1 if problems else 0)
+    return worst
+
+
+def cmd_unpack_case(args) -> int:
+    from mystery.cases.package import read_package, unpack_to_case_dir
+    path = unpack_to_case_dir(read_package(args.file), args.out)
+    print(f"Unpacked to {path} (contains truth.json: spoilers).")
+    return 0
+
+
+def cmd_build_library(args) -> int:
+    import tempfile
+    from mystery.cases.library import build_library, build_parity_fixtures
+    target = args.out
+    if args.check:
+        target = tempfile.mkdtemp()
+
+    def progress(profile, seed):
+        print(f"  simulated {profile} seed {seed}", file=sys.stderr)
+
+    index = build_library(target, progress)
+    print(f"{len(index['cases'])} cases written to {target}")
+    for m in index["missing"]:
+        print(f"  not found: {m}")
+    if args.parity:
+        for path in build_parity_fixtures(target, args.parity):
+            print(f"  parity fixture {path}")
+    if args.check:
+        with open(os.path.join(args.out, "index.json"), encoding="utf-8") as f:
+            committed = json.load(f)
+        same = [(e["file"], e["sha256"]) for e in committed["cases"]] == \
+            [(e["file"], e["sha256"]) for e in index["cases"]]
+        print("Library matches a fresh regeneration." if same else
+              "Library DIFFERS from a fresh regeneration (simulation or export changed; rebuild and bump versions).")
+        return 0 if same else 3
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mystery", description="Project Mystery prototype")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -248,6 +321,27 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("reveal", help="after concluding a case, show the truth")
     p.add_argument("--case", required=True)
     p.set_defaults(func=cmd_reveal)
+
+    p = sub.add_parser("export-godot", help="export one incident as a .mcase package for the Godot game")
+    _sim_args(p)
+    p.add_argument("--incident", required=True)
+    p.add_argument("--out", default=os.path.join(DEFAULT_RUNS, "packages"))
+    p.set_defaults(func=cmd_export_godot)
+
+    p = sub.add_parser("build-library", help="regenerate the game's bundled case library (godot/cases)")
+    p.add_argument("--out", default=os.path.join("godot", "cases"))
+    p.add_argument("--parity", help="also write Python-vs-Godot parity fixtures to this folder")
+    p.add_argument("--check", action="store_true", help="verify the committed library is reproducible")
+    p.set_defaults(func=cmd_build_library)
+
+    p = sub.add_parser("validate-case", help="validate .mcase packages (format, schema, spoiler boundary, seal)")
+    p.add_argument("files", nargs="+")
+    p.set_defaults(func=cmd_validate_case)
+
+    p = sub.add_parser("unpack-case", help="developer: unpack a .mcase into investigation.json + truth.json")
+    p.add_argument("file")
+    p.add_argument("--out", default=os.path.join(DEFAULT_RUNS, "cases"))
+    p.set_defaults(func=cmd_unpack_case)
 
     p = sub.add_parser("truth", help="developer: print a case's sealed truth (spoilers)")
     p.add_argument("--case", required=True)

@@ -3,3 +3,8 @@
 *.bat text eol=crlf
 # Everything else is normalised to LF in the repository.
 * text=auto
+# Case packages, the library index and parity fixtures are checksummed byte-for-byte:
+# never convert their line endings.
+*.mcase -text
+godot/cases/index.json -text
+godot/tests/parity/*.json -text

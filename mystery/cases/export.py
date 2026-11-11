@@ -84,14 +84,16 @@ class _Builder:
         return f"K{self._n:04d}"
 
     def add(self, speaker: str, text: str, topics: list[str], source: str, time: int | None, place: str | None,
-            about: list[str], guarded: bool, audit: dict, group: dict | None = None) -> None:
+            about: list[str], guarded: bool, audit: dict, group: dict | None = None,
+            facts: list[dict] | None = None) -> None:
         for existing in self.items.get(speaker, []):
             if existing["text"] == text and existing["guarded"] == guarded:
                 existing["topics"] = sorted(set(existing["topics"]) | set(topics))
                 return
         k = self.key()
         item = {"key": k, "text": text, "topics": sorted(set(topics)), "source": source, "time": time,
-                "place": place, "about": sorted({a for a in about if a}), "guarded": guarded}
+                "place": place, "about": sorted({a for a in about if a}), "guarded": guarded,
+                "facts": facts or []}
         if group:
             item["group"] = group
         self.items.setdefault(speaker, []).append(item)
@@ -168,7 +170,8 @@ class _Builder:
                                            "text": render(sim, rid, b, claim)}
                 continue
             self.add(rid, render(sim, rid, b, claim), topics, b.source, claim.start, claim.location,
-                     [claim.subject, claim.other], disclosure == "guarded", audit, _group(sim, b, claim))
+                     [claim.subject, claim.other], disclosure == "guarded", audit, _group(sim, b, claim),
+                     _facts(claim))
         if concealing and inc.family == "collision":
             veh = r.vehicle
             if veh:
@@ -390,7 +393,8 @@ class _Builder:
             audit = {"belief": None, "status": "accurate", "error": None, "disclosure": "open",
                      "withheld_reason": None, "supports": self._self_supports(rid, segs), "event": None,
                      "lie": False, "segments": segs}
-            self.add(rid, truth_text, ["whereabouts"], "self", a, None, [rid], False, audit)
+            self.add(rid, truth_text, ["whereabouts"], "self", a, None, [rid], False, audit,
+                     facts=_segment_facts(rid, segs))
             return
         ct = self.inc.time
         home = sim.residents[rid].home
@@ -411,7 +415,8 @@ class _Builder:
         audit = {"belief": None, "status": "lie", "error": "hid where they really were", "disclosure": "open",
                  "withheld_reason": None, "supports": ["responsible_lie"], "event": None, "lie": True,
                  "segments": merged, "true_segments": segs, "true_text": truth_text}
-        self.add(rid, text, ["whereabouts"], "self", a, None, [rid], False, audit)
+        self.add(rid, text, ["whereabouts"], "self", a, None, [rid], False, audit,
+                 facts=_segment_facts(rid, merged))
 
     def _self_supports(self, rid: str, segs: list[list]) -> list[str]:
         out = []
@@ -611,6 +616,29 @@ class _Builder:
             "event_log_digest": log.digest(until=now),
             "event_count": len([e for e in log.events if e.time <= now]),
         }
+
+
+FACT_KINDS = {"presence", "sighting", "intoxicated", "argument", "assault", "noise", "saw_collision", "purchase",
+              "injury", "struck", "fall", "death"}
+
+
+def _facts(c: Claim) -> list[dict]:
+    """Where the statement *claims* someone was, for the player's timeline.
+
+    Built from the claim as the speaker recalls it (shifted times, misidentifications and
+    all), so it is exactly as player-safe as the sentence itself."""
+    if c.kind not in FACT_KINDS or c.start is None or c.location is None:
+        return []
+    who = [c.subject] if c.kind not in ("struck", "injury", "death") else [c.other or c.subject]
+    if c.kind in ("argument", "assault"):
+        who.append(c.other)
+    end = c.end if c.end is not None else c.start
+    return [{"who": w, "place": c.location, "from": c.start, "to": end, "hedged": bool(c.hedged)}
+            for w in who if w]
+
+
+def _segment_facts(rid: str, segs: list[list]) -> list[dict]:
+    return [{"who": rid, "place": loc, "from": s, "to": e, "hedged": False} for loc, s, e in segs]
 
 
 def _group(sim: "Simulation", b, c: Claim) -> dict | None:
