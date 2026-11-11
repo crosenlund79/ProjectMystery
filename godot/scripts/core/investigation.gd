@@ -36,21 +36,44 @@ var _items_by_key := {}
 var _residents := {}
 
 
+## Version of the saved state layout. A save from a newer build than this is refused (see SaveStore);
+## older layouts are brought up to date in _normalize_state.
+const STATE_VERSION := 1
+
+
+## True when a saved investigation was resumed. save_mismatch is true when a save existed for this case id
+## but was made for different case contents (for example, before the library was rebuilt), so it was not used.
+var resumed := false
+var save_mismatch := false
+
+
 func _init(pkg: Dictionary, saved_state = null) -> void:
 	package = pkg
 	data = pkg["investigation"]
 	case_id = pkg["case_id"]
+	var fp := fingerprint(pkg)
 	if typeof(saved_state) == TYPE_DICTIONARY and saved_state.get("case_id") == case_id:
-		state = saved_state
-	else:
+		if String(saved_state.get("case_fingerprint", "")) == fp:
+			state = saved_state
+			resumed = true
+		else:
+			save_mismatch = true
+	if not resumed:
 		state = {"case_id": case_id, "credits": int(data["hint_credits"]), "hints_bought": 0, "concluded": false,
 				"revealed": false, "theory": null}
+	state["case_fingerprint"] = fp
 	_normalize_state()
 	for r in data["residents"]:
 		_residents[r["id"]] = r
 	for rid in data["testimony"]:
 		for it in data["testimony"][rid]["items"]:
 			_items_by_key[it["key"]] = it
+
+
+static func fingerprint(pkg: Dictionary) -> String:
+	## Identifies the exact contents of a case, so a save is never applied to a different version of it.
+	var seal: Dictionary = pkg.get("sealed_truth", {})
+	return (JSON.stringify(pkg["investigation"]) + "|" + String(seal.get("data_sha256", ""))).sha256_text()
 
 
 func _normalize_state() -> void:
@@ -72,6 +95,7 @@ func _normalize_state() -> void:
 			e["time"] = int(e["time"])
 	state["concluded"] = bool(state.get("concluded", false))
 	state["revealed"] = bool(state.get("revealed", false))
+	state["state_version"] = STATE_VERSION
 
 
 # --------------------------------------------------------------------------- lookups

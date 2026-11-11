@@ -3,6 +3,8 @@
 ## never any part of the sealed truth.
 extends RefCounted
 
+## The newest saved-state layout this build understands (Investigation.STATE_VERSION).
+const MAX_STATE_VERSION := 1
 const DEFAULT_SETTINGS := {"text_size": 1, "high_contrast": false, "fullscreen": false}
 
 var root: String
@@ -63,6 +65,8 @@ func load_state(case_id: String):
 	## The saved state for a case, or null.
 	var d = _read_json(save_path(case_id))
 	if typeof(d) != TYPE_DICTIONARY or d.get("case_id") != case_id:
+		return null
+	if int(d.get("state_version", 1)) > MAX_STATE_VERSION:
 		return null
 	return d
 

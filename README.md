@@ -2,16 +2,68 @@
 
 > *Build a town that produces true histories — and let the player discover how difficult it is to know the truth.*
 
-A first, text-only prototype of the concept in [`docs/concept.md`](docs/concept.md). A seeded town of 8–12
+A prototype of the concept in [`docs/concept.md`](docs/concept.md), in two parts: a **Godot 4 game** with a
+clickable detective interface, and the **Python laboratory** that simulates the towns and generates the cases.
+A seeded town of 8–12
 residents lives its own life for weeks — working, drinking, borrowing, arguing, making up, and occasionally
 stealing, crashing a car or hurting someone. The simulation records what *really* happened. When something is
 noticed, the case is frozen. You then investigate it through what people actually saw, heard, were told or
 are willing to say. When you submit a theory or give up, the sealed truth is revealed next to your notebook.
 
-There's no scripting. Every clue, lie, rumour and mistake comes from simulated state. Pure Python 3.10+,
-no dependencies. Works on Windows, macOS and Linux.
+There's no scripting. Every clue, lie, rumour and mistake comes from simulated state.
 
-## Windows: double-click to play
+## Play the game on Windows
+
+The game needs no Python, no installer, no internet connection and no accounts or keys.
+
+1. Open the repository's **Actions** tab, choose the latest successful **CI** run, and download the artifact
+   **ProjectMystery-windows** at the bottom of the page. You need to be signed in to GitHub. Artifacts are
+   kept for 90 days, and any new push builds a fresh one.
+2. Right-click the downloaded `.zip`, choose **Extract All…**, and open the folder.
+3. Double-click **`ProjectMystery.exe`**. If Windows shows "Windows protected your PC", choose **More info → Run
+   anyway**. The game is not code-signed yet.
+
+Choose **New Case** and pick one of the 15 bundled cases, each from a different simulated town and season.
+Then investigate:
+
+* talk to people (pick a topic, follow up on names they mention, press someone who is holding back);
+* look around places and vehicles (private ones need the owner's agreement);
+* read the record books.
+
+Everything you learn is filed in the notebook. The timeline lines up who was where, and flags accounts that
+cannot both be true. When you are ready, choose **Solve the case…** to submit your theory, or give up, and the
+sealed truth is revealed and scored. The game saves after every action. **Continue** picks up where you left
+off, **Load Case** opens other saved investigations or imports a `.mcase` file, and **Settings** has text size,
+high contrast and fullscreen. Saves live in `%APPDATA%\ProjectMystery`.
+
+To run the game from source, open `godot/project.godot` in [Godot 4.3](https://godotengine.org/download/archive/4.3-stable/)
+and press F5. [`docs/godot-migration.md`](docs/godot-migration.md) explains how the game and the laboratory fit
+together, how cases travel between them ([`docs/case-format.md`](docs/case-format.md)), how their rules are
+kept identical ([`docs/investigation-rules.md`](docs/investigation-rules.md)), and the plan for moving the
+simulation itself into Godot.
+
+## The Python laboratory
+
+The laboratory is pure Python 3.10+, with no dependencies. It works on Windows, macOS and Linux. It runs the
+simulation, the developer tools, the original text version of the game, and the case pipeline for the Godot
+game:
+
+```bash
+python -m mystery export-godot --seed 7 --days 60 --profile normal --incident I1
+```
+
+```bash
+python -m mystery build-library --parity godot/tests/parity
+```
+
+```bash
+python -m mystery validate-case godot/cases/*.mcase
+```
+
+The first command packages one case for the game. The second rebuilds the bundled library and the
+Python-to-Godot parity fixtures. The third checks packages.
+
+### Windows: double-click the laboratory and the text game
 
 1. Install Python 3.10 or newer from [python.org](https://www.python.org/downloads/windows/). On the first
    screen of the installer, tick **Add python.exe to PATH**. (Alternatively, run
@@ -165,7 +217,10 @@ cite, minus hints. An honest "unresolved" scores well when the evidence really w
 ## Acceptance checks
 
 All of these run with `python -m unittest discover -s tests -t .` (about 25 seconds), or with option 7 in
-`Mystery-Lab.cmd`.
+`Mystery-Lab.cmd`. The Godot game has its own suite (`godot --headless --path godot -s res://tests/run_tests.gd`).
+It covers case loading, testimony, permissions, hints, the spoiler boundary, saves, the reveal, an
+end-to-end investigation through the interface, and a step-by-step replay of investigations recorded from the
+Python rules. CI runs both suites on Windows, then exports the game and smoke-tests the executable.
 
 | Check (from the concept, §12) | How it is verified |
 |---|---|
@@ -209,10 +264,17 @@ mystery/
   diagnostics/  integrity checks and batch reports
   cli.py        python -m mystery ...
   launcher.py   the menus behind the launchers (play: spoiler-free; lab: developer tools)
-Play-Mystery.cmd, Mystery-Lab.cmd   double-click launchers for Windows
+  cases/package.py, cases/library.py   .mcase packages, the bundled library and parity fixtures
+godot/          the Godot 4.3 game (see docs/godot-migration.md)
+  scripts/core/ case loading, investigation rules, verdict, saves (no UI)
+  scripts/ui/   menus, investigation screen, timeline, reveal, theme
+  scripts/sim/  reserved for the in-engine simulation
+  cases/        the bundled case library; tests/  Godot tests and parity fixtures
+Play-Mystery.cmd, Mystery-Lab.cmd   double-click launchers for Windows (Python laboratory and text game)
 tools/          find-python.cmd (shared by the launchers); wine/ launcher test harness
 tests/          unittest acceptance suite
-docs/           the concept document and prototype notes
+docs/           concept, prototype notes, case format, investigation rules, Godot migration
+.github/        CI: Python tests (Windows, Linux), Godot tests, Windows export and smoke test
 runs/           generated runs and cases (git-ignored)
 ```
 

@@ -351,6 +351,8 @@ func open_case(entry: Dictionary, fresh: bool) -> bool:
 	var state = null if fresh else saves.load_state(entry["case_id"])
 	engine = Investigation.new(loaded["package"], state)
 	persist()
+	if engine.save_mismatch:
+		message("This case has changed", "This case was updated since you last played it, so your earlier notes no longer fit it. The investigation starts afresh.")
 	if engine.state["revealed"]:
 		var res: Dictionary = engine.reveal()
 		show_reveal(res["model"])

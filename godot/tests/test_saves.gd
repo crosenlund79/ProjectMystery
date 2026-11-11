@@ -56,6 +56,27 @@ func run(t, _tree) -> void:
 	t.eq(wrong.state["entries"].size(), 0, "foreign save applied")
 	t.end()
 
+	t.begin("saves carry a layout version; a save from a newer build is not misread")
+	t.eq(int(again.state["state_version"]), Investigation.STATE_VERSION, "state version")
+	t.eq(SaveStore.MAX_STATE_VERSION, Investigation.STATE_VERSION, "save store and engine agree on the version")
+	var future: Dictionary = inv.state.duplicate(true)
+	future["state_version"] = Investigation.STATE_VERSION + 1
+	store.save(future)
+	t.check(store.load_state(pkg["case_id"]) == null, "a newer save layout was accepted")
+	store.save(inv.state)
+	t.check(store.load_state(pkg["case_id"]) != null, "the current layout was refused")
+	t.end()
+
+	t.begin("a save is only applied to the exact case contents it was made for")
+	t.check(again.resumed and not again.save_mismatch, "the matching save was not resumed")
+	var changed: Dictionary = pkg.duplicate(true)
+	changed["investigation"]["hints"][0]["text"] = "A different version of this case."
+	var stale = Investigation.new(changed, store.load_state(pkg["case_id"]))
+	t.check(stale.save_mismatch and not stale.resumed, "a save for other contents of the same case id was used")
+	t.eq(stale.state["entries"].size(), 0, "the stale notebook was carried over")
+	t.eq(Investigation.fingerprint(pkg), Investigation.fingerprint(pkg.duplicate(true)), "fingerprint is stable")
+	t.end()
+
 	t.begin("saves are listed newest first and can be deleted")
 	var inv2 = Investigation.new(other, null)
 	inv2.note("second case")
