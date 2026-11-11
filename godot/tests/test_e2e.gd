@@ -22,9 +22,11 @@ func run(t_, tree_: SceneTree) -> void:
 	await _frames(1)
 	t.check(main.current == "menu", "main menu not shown")
 	t.check(_find("ContinueButton") != null and _find("ContinueButton").disabled, "Continue enabled without a save")
+	await _layout("main menu")
 
 	await _press("NewCaseButton")
 	t.check(main.current == "new_case", "New Case screen not shown")
+	await _layout("new case")
 	var entry: Dictionary = main.library.entries[0]
 	await _press("StartCase_" + entry["case_id"])
 	t.check(main.current == "investigation", "case did not open")
@@ -46,12 +48,14 @@ func run(t_, tree_: SceneTree) -> void:
 	if _find("PressButton") != null:
 		await _press("PressButton")
 	await _press("AskAboutButton")
+	await _layout("people")
 
 	# places and vehicles
 	await _press("Nav_places")
 	await _press("Place_square")
 	await _press("SearchButton")
 	t.check(engine.state["ui"]["searched"].has("square"), "square not searched")
+	await _layout("places")
 	if not engine.data["vehicles"].is_empty():
 		var vid: String = engine.data["vehicles"][0]["id"]
 		await _press("Place_" + vid)
@@ -65,15 +69,19 @@ func run(t_, tree_: SceneTree) -> void:
 	await _press("Book_" + books[0])
 	await _press("ReadButton")
 	t.check(engine.state["ui"]["read"].has(books[0]), "record book not requested")
+	await _layout("records")
 
 	# notebook and timeline
 	await _press("Nav_notebook")
 	scr.add_note("The timing of all this bothers me.", engine.data["hook"]["window"][0])
 	await _frames(1)
 	t.check(engine.entry("N1").get("text", "") == "The timing of all this bothers me.", "note not saved")
+	await _layout("notebook")
 	await _press("Nav_timeline")
 	t.check(_find("TimelineChart") != null, "timeline chart missing")
+	await _layout("timeline")
 	await _press("Nav_case")
+	await _layout("case file")
 
 	# a hint (the confirmation dialog is bypassed by calling the action it confirms)
 	var credits := int(engine.state["credits"])
@@ -97,6 +105,7 @@ func run(t_, tree_: SceneTree) -> void:
 	scr = main.screen
 	await _press("TheoryButton")
 	t.check(_find("SubmitTheoryButton") != null, "theory form missing")
+	await _layout("theory")
 	var cite = _find("TheoryCite_S1")
 	if cite != null:
 		cite.button_pressed = true
@@ -110,6 +119,7 @@ func run(t_, tree_: SceneTree) -> void:
 	var narrative = _find("Narrative")
 	t.check(narrative != null and String(narrative.text) != "", "narrative missing on the reveal")
 	t.check(main.engine.state["revealed"], "case not closed")
+	await _layout("reveal")
 
 	# a closed case reopens straight to its reveal
 	await _press("RevealMenuButton")
@@ -121,14 +131,78 @@ func run(t_, tree_: SceneTree) -> void:
 	# settings
 	main.show_settings()
 	await _frames(1)
+	await _layout("settings")
 	main.change_setting("text_size", 3)
 	main.change_setting("high_contrast", true)
 	t.eq(main.theme.default_font_size, 25, "text size not applied")
+	await _layout("settings, extra large text")
+
+	# every screen again at the largest text size, on a second case
+	main.show_load()
+	await _layout("load case, extra large text")
+	var second: Dictionary = main.library.entries[1]
+	main.open_case(second, true)
+	await _frames(1)
+	t.check(main.current == "investigation", "second case did not open")
+	var eng2 = main.engine
+	var who := ""
+	for r in eng2.data["residents"]:
+		if r["condition"] != "deceased" and who == "":
+			who = r["id"]
+	main.screen.select_resident(who)
+	main.screen.ask(who, "whereabouts")
+	main.screen.ask(who, "incident")
+	await _layout("people, extra large text")
+	main.screen.search_place(eng2.data["places"][0]["id"])
+	await _layout("places, extra large text")
+	var books2: Array = eng2.data["records"].keys()
+	books2.sort()
+	main.screen.read_book(books2[0])
+	await _layout("records, extra large text")
+	for pg in ["case", "notebook", "timeline", "theory"]:
+		main.screen.show_page(pg)
+		await _layout(pg + ", extra large text")
+	main.show_main_menu()
+	await _layout("main menu, extra large text")
 	main.change_setting("text_size", 1)
 	main.change_setting("high_contrast", false)
+	main.saves.reset_all()
 	main.queue_free()
 	await _frames(1)
 	t.end()
+
+
+func _layout(where: String) -> void:
+	## Headless Godot still lays out Controls, so the sizes are real: nothing squeezed, collapsed or off screen.
+	await _frames(2)
+	var view: Vector2 = main.get_viewport_rect().size
+	var problems := []
+	_walk(main.screen, view, problems)
+	t.check(problems.is_empty(), "layout on %s (window %dx%d): %s" % [where, int(view.x), int(view.y),
+			"; ".join(PackedStringArray(problems.slice(0, 5)))])
+
+
+func _walk(node: Node, view: Vector2, problems: Array) -> void:
+	if node is Window:
+		return
+	if node is Control:
+		var c: Control = node as Control
+		if not c.is_visible_in_tree():
+			return
+		var r := c.get_global_rect()
+		var what := "%s '%s'" % [c.get_class(), String(c.name)]
+		if c is Label:
+			var lab: Label = c as Label
+			if lab.autowrap_mode != TextServer.AUTOWRAP_OFF and lab.text.length() > 12 and r.size.x < 80:
+				problems.append("%s squeezed to %d px: %s" % [what, int(r.size.x), lab.text.left(30)])
+		if c is BaseButton and (r.size.x < 16 or r.size.y < 16):
+			problems.append("%s collapsed to %dx%d" % [what, int(r.size.x), int(r.size.y)])
+		if view.x > 100 and r.end.x > view.x + 2:
+			problems.append("%s runs off the right edge (to %d px)" % [what, int(r.end.x)])
+		if String(c.name) == "TimelineChart" and r.size.y < 60:
+			problems.append("timeline chart collapsed")
+	for ch in node.get_children():
+		_walk(ch, view, problems)
 
 
 func _find(node_name: String):

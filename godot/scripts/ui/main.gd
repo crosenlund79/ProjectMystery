@@ -178,8 +178,8 @@ func show_new_case(filter := "all") -> void:
 	root.add_child(_header("New Case"))
 	root.add_child(Kit.label("Each case comes from a real simulated history. Pick one by its season and how much "
 			+ "the town gives away. The details are for you to find.", "MutedLabel"))
-	var filters := [["All difficulties", 0], ["Gentle", 1], ["Standard", 2], ["Hard", 3]]
-	var keys := ["all", "gentle", "standard", "hard"]
+	var filters := [["All difficulties", 0], ["Gentle", 1], ["Standard", 2], ["Hard", 3], ["Very hard", 4]]
+	var keys := ["all", "gentle", "standard", "hard", "very hard"]
 	var opt := Kit.option(filters, keys.find(filter), "Show only cases of one difficulty")
 	opt.name = "DifficultyFilter"
 	opt.item_selected.connect(func(i): show_new_case(keys[i]))

@@ -108,9 +108,14 @@ func _top_bar() -> Control:
 	tb.add_child(menu)
 	var hook: Dictionary = engine.data["hook"]
 	var titles := Kit.vbox(0)
-	titles.add_child(Kit.label(hook["title"], "HeadingLabel", false))
-	titles.add_child(Kit.label("%s  ·  you arrive %s" % [engine.data["town"], engine.data["start_label"]], "SmallLabel",
-			false))
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for line in [[hook["title"], "HeadingLabel"],
+			["%s  ·  you arrive %s" % [engine.data["town"], engine.data["start_label"]], "SmallLabel"]]:
+		var l := Kit.label(line[0], line[1], false)
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		l.tooltip_text = line[0]
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
+		titles.add_child(l)
 	tb.add_child(titles)
 	credits_label = Kit.label("", "AccentLabel", false)
 	credits_label.tooltip_text = "Investigation credits pay for hints. Each credit spent costs 5 points."
@@ -661,7 +666,8 @@ func _page_notebook() -> void:
 	line.placeholder_text = "Write a note…"
 	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	av.add_child(line)
-	var row := Kit.hbox(8)
+	var row := Kit.flow()
+	row.add_theme_constant_override("h_separation", 8)
 	var timed := CheckBox.new()
 	timed.name = "NoteTimed"
 	timed.text = "Put it on the timeline at"
@@ -678,7 +684,7 @@ func _page_notebook() -> void:
 	av.add_child(row)
 	add.add_child(av)
 	content.add_child(add)
-	var filters := Kit.hbox(6)
+	var filters := Kit.flow()
 	for f in FILTERS:
 		var b := Kit.button(f[0], "Show " + String(f[0]).to_lower(), "NavButtonActive" if f[1] == notebook_filter else "NavButton",
 				"Filter_" + (f[1] if f[1] != "" else "all"))
@@ -872,12 +878,16 @@ func _page_theory() -> void:
 	ev.add_child(Kit.label("Citing reliable evidence earns points; leaning on lies or mistakes costs them.", "SmallLabel"))
 	var any := false
 	for e in engine.state["entries"]:
+		var line := Kit.hbox(6)
 		var cb := CheckBox.new()
 		cb.name = "TheoryCite_" + String(e["id"])
-		cb.text = "[%s] %s" % [e["id"], String(e["text"]).left(140)]
+		cb.text = "[%s]" % e["id"]
+		cb.tooltip_text = "Cite this as evidence"
 		cb.button_pressed = theory_cites.has(e["id"])
 		cb.toggled.connect(_toggle_cite.bind(e["id"]))
-		ev.add_child(cb)
+		line.add_child(cb)
+		line.add_child(Kit.label(String(e["text"])))
+		ev.add_child(line)
 		any = true
 	if not any:
 		ev.add_child(Kit.label("Your notebook is empty.", "MutedLabel"))
