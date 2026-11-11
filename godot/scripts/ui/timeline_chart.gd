@@ -113,24 +113,24 @@ func _draw() -> void:
 			_hits.append([rect.grow(4), f])
 
 
-func _fact_at(pos: Vector2):
+func _fact_at(pos: Vector2) -> Dictionary:
 	for h in _hits:
 		if h[0].has_point(pos):
 			return h[1]
-	return null
+	return {}
 
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var f = _fact_at(event.position)
-		if f != null:
+		var f: Dictionary = _fact_at(event.position)
+		if not f.is_empty():
 			entry_selected.emit(String(f["entry"]))
 			accept_event()
 
 
 func _get_tooltip(at_position: Vector2) -> String:
-	var f = _fact_at(at_position)
-	if f == null:
+	var f: Dictionary = _fact_at(at_position)
+	if f.is_empty():
 		return ""
 	var when := Clock.around(f["from"]) if int(f["from"]) == int(f["to"]) else \
 			"%s to %s" % [Clock.fmt(f["from"]), Clock.fmt(f["to"])]

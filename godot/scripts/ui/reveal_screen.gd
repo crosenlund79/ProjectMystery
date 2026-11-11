@@ -87,7 +87,7 @@ func _comparison() -> Control:
 		grid.add_child(Kit.label(row[0], "MutedLabel", false))
 		grid.add_child(Kit.label(String(row[1]), "", false))
 		var mine := "—" if th == null else String(th[row[2]])
-		var good := th != null and (mine == String(row[1]) or (row[2] == "motive" and ans["motives"].has(mine)))
+		var good: bool = th != null and (mine == String(row[1]) or (row[2] == "motive" and ans["motives"].has(mine)))
 		grid.add_child(Kit.label(mine, "GoodLabel" if good else ("DangerLabel" if th != null else "MutedLabel"), false))
 	var card := Kit.panel("Card")
 	var v := Kit.vbox(8)

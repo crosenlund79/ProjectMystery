@@ -1,0 +1,123 @@
+# Investigation rules: the contract shared by Python and Godot
+
+The rules of play are implemented twice, so the game runs without Python:
+
+* **Python reference:** `mystery/investigate/{dialogue,notebook,session,verdict}.py`, through the structured
+  `*_result()` methods and `reveal_model()`.
+* **Godot game:** `godot/scripts/core/investigation.gd` and `verdict.gd`.
+
+Both must give identical structured results for the same actions on the same case. That is enforced by
+**parity fixtures**: scripted investigations that `python -m mystery build-library --parity
+godot/tests/parity` records from the Python engine. They cover every incident family. `godot/tests/test_parity.gd`
+replays each action in Godot and requires an exact match, step by step, from the first answer to the last
+line of the reveal. `tests/test_package.py` checks that the fixtures still match the current Python rules.
+
+Times are minutes since Day 1 00:00. "Entries" are notebook entries.
+
+## Questioning: `ask(resident, topic, press)`
+
+* Topics are the eight base topics (`whereabouts`, `window`, `incident`, `money`, `conflicts`, `rumors`,
+  `vehicles`, `past`) plus `person:<id>` for every other resident.
+* The dead cannot answer: `{"dead": true, "lines": [["<First> is dead."]]}`.
+* **Patience:** each resident starts with `goodwill` from the case. Pressing costs 1. A topic can be pressed
+  once. At 0 patience, pressing returns *"That's enough questions for today. I've told you what I know."*
+* **What is said:** the items whose `topics` include the topic. Guarded items are included only once the topic
+  has been pressed. The rest are sorted by `(time is null, time or 0, key)`.
+* **Grouping:** consecutive items with the same `group.id` become one line: the group template with names
+  joined as "A, B and C". All of their entries are recorded.
+* **Nothing to say:** if the resident is withholding on the topic (`evasive_topics`) or has guarded items,
+  they give their style's evasive line. Nervous: *"I... I'd rather not get into that."* Smooth: *"Can't help
+  you there, I'm afraid."* Otherwise they say *"I don't know anything about that."*
+* **Holding back:** if guarded items remain hidden, a nervous resident adds *"(They hesitate, as if there is
+  something more they are not saying.)"* Smooth liars give no tell.
+* **Pressing in vain:** pressing a topic that has no guarded items adds *"(Pressing them doesn't get you
+  anything more.)"*
+* Every statement heard becomes entry `S<n>` with text `First: "statement"`, its time and speaker, unless
+  it was heard before.
+* The result also gives `goodwill`, `can_press` (the topic is not yet pressed and patience is above 0) and
+  `followups` (the sorted ids of people the statements mention).
+
+## Looking around
+
+* **`inspect_place(id)`:** if not `allowed`, the result is the owner's reply and an observation entry
+  `O<n>` *"Refused entry to …"*, with no traces. If allowed, each trace becomes `X<n>` *"At <place>:
+  <description>"*. The result lists the record books kept there and the vehicles parked there. The owner's
+  reply is shown when the place has owners.
+* **`inspect_vehicle(id)`:** the same, with `O` *"Not allowed to look at …"* or `X` entries (the description
+  alone).
+* **`read(book, day)`:** if refused, `O` *"Not allowed to read the …"*. If allowed, the entries (optionally
+  one day's) and an `O` *"Read the <title>[ for Day N]"* entry, filed under the reference `read:<book>:<day or None>`.
+* **`cite_record(entry_id)`:** copies a line from an open book into the notebook as `D<n>`.
+* **`note(text, time)`:** the player's own note `N<n>`, optionally placed on the timeline.
+* **`mark(entry, mark)`:** `confirmed`, `disputed`, `uncertain` or `inference`. Anything else is refused.
+
+The notebook never holds the same reference twice. Entry ids are a prefix letter plus a running number per
+prefix, and the numbering survives saving and loading.
+
+## Hints: `hint()`
+
+Hints are bought in order. The tiers are Nudge, Lead and Strong hint, and each has a cost in credits (the
+case grants `hint_credits`). When none are left: *"There are no more hints for this case."* When the next one
+is unaffordable: *"The next hint costs N credits; you have M."* Spent credits are recorded in `hint_spend`.
+
+## Timeline: `timeline()`
+
+* `entries` lists the timed entries ordered by `(time, id)`, each with the ids of the entries it conflicts with.
+* `facts` collects every `fact` of every statement entry, tagged with its entry.
+* **Conflicts** are pairs of entries that put the same person in different places at once. The margin `M` is
+  20 minutes, because witness times are only ever approximate. Same-place claims, and claims within one
+  entry, never conflict.
+  * A *moment* conflicts with a *stay* elsewhere if `stay.from + M < moment < stay.to - M`.
+  * Two stays conflict if they overlap by more than `2M`.
+  * Two moments conflict only at the same minute.
+  * Pairs are ordered by entry (prefix letter, then number), then by person.
+
+The game flags conflicts in the notebook and the timeline. They catch lies (an alibi against a sighting) and
+honest mistakes (a misremembered time) alike, and the player has to decide which is which.
+
+## Concluding
+
+* **`submit(mechanism, responsible, motive, cites, summary)`:**
+  * The mechanism and motive must be among the case's `theory_options`.
+  * `responsible` is a resident id, or null for no one.
+  * Cites are notebook ids, or open record lines (cited on the fly).
+  * The case is then concluded, and can be concluded only once.
+* **`give_up()`:** concludes without a theory.
+* **`reveal()`:** while the case is open, the result is `{"sealed": true, "model": null}` and the truth is not
+  touched. Once the case is concluded, the truth is opened (for the first time), scored, the case is marked
+  revealed, and every later action returns `{"error": "closed"}`.
+
+### Scoring
+
+| Theory | Points |
+|---|---|
+| None (gave up) | 0 |
+| "Cannot be determined" | 50 if the case's evidence really was thin (`ambiguous`/`unsolvable`), else 15 |
+| Otherwise | explanation 40 + responsibility 30 + motive 10 (for no-one cases, the motive must be `none` or `unknown`) |
+
+Then **evidence cited** adds 5 per good citation, capped at 20, and subtracts 3 per citation of a mistaken or
+lying statement. A good citation is one of:
+* an accurate statement that supports the truth;
+* the responsible person's own lie;
+* a trace or record created by the incident's causal chain (or a ledger error, drink, repair or treatment
+  record).
+
+**Hints** subtract 5 per credit spent. The total is clamped to 0–100. Notes are added for a wrong person and
+for leaning on bad statements.
+
+### The reveal model
+
+* `narrative`.
+* `answer` and the player's `theory`, as labels.
+* `score`: total, the ordered parts, and the notes.
+* `timeline`: the causal chain plus the responsible person's movements, by `(time, id)`, without meals.
+* `annotations`: each notebook entry that bears on the case, checked:
+  * *LIE — why*, with what really happened;
+  * *MISTAKEN — why*;
+  * *true as far as it goes*;
+  * *true*;
+  * *left by: …* (traces);
+  * *records: …* (record lines).
+* `plain_true`: the count of true but irrelevant statements.
+* `missed`: evidence channels the player never touched.
+* `assessment`: the case's suitability verdict.
