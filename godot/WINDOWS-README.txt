@@ -7,8 +7,9 @@ installer, no internet connection, no accounts or keys.
 If Windows shows "Windows protected your PC" (SmartScreen), choose "More info" and
 then "Run anyway". The game is not code-signed yet.
 
-Keep the files in this folder together if there is more than one (some PCs need the
-libEGL.dll / libGLESv2.dll graphics libraries next to the game).
+The game is the single file ProjectMystery.exe; you can move it anywhere. It needs a
+graphics driver with OpenGL 3.3, which almost every PC from the last ten years has. If it
+will not start, update the graphics driver from the PC or graphics card maker's site.
 
 Your saved investigations and settings live in:
     %APPDATA%\ProjectMystery

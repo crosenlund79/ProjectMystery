@@ -27,8 +27,9 @@ The concept separates six concerns. This is where each one lives today and where
 
 The rules and the presentation are separated in Godot as they are in Python. `scripts/core/` has no UI code: it
 works on plain dictionaries and returns plain results, and the tests drive it without a window.
-`scripts/ui/` holds no rules: every button calls the engine and draws what comes back. Only
-`scripts/core/verdict.gd` opens the sealed truth, and only once the case is concluded.
+`scripts/ui/` holds no rules: every button calls the engine and draws what comes back. The seal is opened
+in one place in the game, `scripts/core/verdict.gd`, and only once the case is concluded. Outside the game,
+only the format tests call the unseal function.
 
 ### Godot source map
 
