@@ -352,7 +352,7 @@ func open_case(entry: Dictionary, fresh: bool) -> bool:
 	engine = Investigation.new(loaded["package"], state)
 	persist()
 	if engine.save_mismatch:
-		message("This case has changed", "This case was updated since you last played it, so your earlier notes no longer fit it. The investigation starts afresh.")
+		message("This case has changed", "This case was updated since you last played it (this version of Project Mystery adds the town: you now walk to places and find people where they are). Your earlier notes belong to the old version of the case and can't be carried over, so the investigation starts afresh.")
 	if engine.state["revealed"]:
 		var res: Dictionary = engine.reveal()
 		show_reveal(res["model"])

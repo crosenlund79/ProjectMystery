@@ -207,6 +207,10 @@ def validate_package(pkg) -> list[str]:
             pids.add(pl["id"])
     if hook is not None and hook.get("place") not in pids:
         p.append("hook: place is not a known place")
+    for i, r in enumerate(residents):
+        # optional (schema 0.2): where the resident can be found during the investigation
+        if isinstance(r, dict) and r.get("now_at") is not None and r.get("now_at") not in pids:
+            p.append(f"residents[{i}]: now_at is not a known place")
     for i, v in enumerate(need(inv, "vehicles", "list", "investigation") or []):
         for k in ("id", "name", "kind", "household", "location", "reply"):
             need(v, k, "str", f"vehicles[{i}]")

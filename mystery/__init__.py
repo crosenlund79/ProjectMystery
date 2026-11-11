@@ -6,4 +6,4 @@ only promised when the seed *and* these versions match.
 
 SIM_VERSION = "0.1.0"
 CONFIG_VERSION = "0.1.0"
-CASE_SCHEMA = "0.1"
+CASE_SCHEMA = "0.2"

@@ -1,11 +1,12 @@
 ## Self-check for an exported build:  ProjectMystery.exe --headless -- --smoke-test=<report path>
-## Loads every bundled case, plays a little of each, and proves the truth stays sealed until the
-## case is concluded, then opens. Reports only case ids and OK/FAIL - never case content.
+## Loads every bundled case, walks its town (every place, the people there, the records kept
+## there), and proves the truth stays sealed until the case is concluded, then opens. Reports only case ids and OK/FAIL - never case content.
 extends RefCounted
 
 const CaseLibrary = preload("res://scripts/core/case_library.gd")
 const Investigation = preload("res://scripts/core/investigation.gd")
 const Verdict = preload("res://scripts/core/verdict.gd")
+const Town = preload("res://scripts/core/town.gd")
 
 
 static func run(out_path: String) -> int:
@@ -22,14 +23,23 @@ static func run(out_path: String) -> int:
 			lines.append("FAIL %s does not load: %s" % [e["case_id"], loaded["errors"][0]])
 			continue
 		var inv = Investigation.new(loaded["package"], null)
+		var town = Town.new(inv)
 		var before: int = Verdict.unseal_count
-		var people: Array = inv.data["residents"]
-		for i in range(mini(3, people.size())):
-			inv.ask(people[i]["id"], "window")
-		for p in inv.data["places"]:
-			inv.inspect_place(p["id"])
-		for b in inv.data["records"]:
-			inv.read(b)
+		var met := 0
+		for p in town.places():
+			town.go(p["id"])
+			town.look_around()
+			for rid in town.people_here():
+				if met < 4 and not town.ask(rid, "window").has("error"):
+					met += 1
+			for b in town.records_at(p["id"]):
+				town.read(b)
+			for vid in town.vehicles_at(p["id"]):
+				town.examine(vid)
+		if met == 0:
+			ok = false
+			lines.append("FAIL %s: nobody could be found in town" % e["case_id"])
+			continue
 		inv.hint()
 		var early: Dictionary = inv.reveal()
 		if not early["sealed"] or Verdict.unseal_count != before:

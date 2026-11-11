@@ -69,6 +69,25 @@ class Library(unittest.TestCase):
         self.assertEqual(again["generator"]["event_log_digest"], g["event_log_digest"])
         self.assertEqual(again, pkg)
 
+    def test_residents_can_be_found_where_the_simulation_left_them(self):
+        """now_at is present state at the frozen instant, observable in town, and always a real place."""
+        for path in library_files():
+            inv = read_package(path)["investigation"]
+            places = {p["id"] for p in inv["places"]}
+            with self.subTest(case=inv["case_id"]):
+                for r in inv["residents"]:
+                    if r["condition"] == "deceased":
+                        self.assertIsNone(r["now_at"])
+                    else:
+                        self.assertIn(r["now_at"], places)
+
+    def test_packages_without_whereabouts_still_validate(self):
+        """Schema 0.1 packages (no now_at) stay readable."""
+        pkg = read_package(library_files()[0])
+        for r in pkg["investigation"]["residents"]:
+            r.pop("now_at")
+        self.assertEqual(validate_package(pkg), [])
+
     def test_unpacked_package_plays_in_python(self):
         with tempfile.TemporaryDirectory() as tmp:
             case_dir = unpack_to_case_dir(read_package(library_files()[0]), tmp)
@@ -100,6 +119,7 @@ class Validation(unittest.TestCase):
             "corrupted seal": lambda p: p["sealed_truth"].update(data="AAAA" + p["sealed_truth"]["data"][4:]),
             "bad fact": lambda p: first_items(p)[0]["facts"].append({"who": "x", "place": "y", "from": 2, "to": 1}),
             "bad style": lambda p: next(iter(p["investigation"]["testimony"].values())).update(style="shifty"),
+            "unknown whereabouts": lambda p: p["investigation"]["residents"][0].update(now_at="atlantis"),
         }
         for name, mutate in cases.items():
             with self.subTest(name):

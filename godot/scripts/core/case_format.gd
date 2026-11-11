@@ -188,6 +188,11 @@ static func validate(pkg) -> Array:
 			pids[pl["id"]] = true
 	if hook != null and not pids.has(hook.get("place")):
 		p.append("hook: place is not a known place")
+	for i in range(residents.size()):
+		# optional (schema 0.2): where the resident can be found during the investigation
+		var r = residents[i]
+		if typeof(r) == TYPE_DICTIONARY and r.get("now_at") != null and not pids.has(r.get("now_at")):
+			p.append("residents[%d]: now_at is not a known place" % i)
 	var vehicles := _list(_need(inv, "vehicles", "list", "investigation", p))
 	for i in range(vehicles.size()):
 		var v = vehicles[i]

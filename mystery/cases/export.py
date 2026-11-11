@@ -494,9 +494,12 @@ class _Builder:
             condition = "alive" if r.alive else "deceased"
             if r.alive and r.injury:
                 condition = "injured"
+            # Where they can be found while the case is investigated (the town as it is at the frozen
+            # instant): present state anyone could observe by walking around, not the past.
+            now_at = sim.where(rid, now) if r.alive else None
             residents.append({"id": rid, "name": r.name, "first": r.first, "occupation": r.occupation,
                               "age_group": r.age_group, "household": r.household,
-                              "home": r.home, "condition": condition})
+                              "home": r.home, "condition": condition, "now_at": now_at})
         places = []
         for loc_id in sorted(sim.world.locations):
             loc = sim.world.locations[loc_id]

@@ -38,7 +38,9 @@ var _residents := {}
 
 ## Version of the saved state layout. A save from a newer build than this is refused (see SaveStore);
 ## older layouts are brought up to date in _normalize_state.
-const STATE_VERSION := 1
+## 1: page-based interface.  2: town (ui.at/visited/seen) and tablet (ui.tablet, ui.tablet_page).
+const STATE_VERSION := 2
+const TABLET_PAGES := ["case", "notebook", "evidence", "people", "timeline", "theory", "hints", "files"]
 
 
 ## True when a saved investigation was resumed. save_mismatch is true when a save existed for this case id
@@ -95,6 +97,13 @@ func _normalize_state() -> void:
 			e["time"] = int(e["time"])
 	state["concluded"] = bool(state.get("concluded", false))
 	state["revealed"] = bool(state.get("revealed", false))
+	if int(state.get("state_version", 1)) < 2:
+		# v1 kept the open page of the old page-based interface; places and records now live in town.
+		var old := String(state["ui"].get("page", "case"))
+		state["ui"].erase("page")
+		state["ui"]["tablet_page"] = old if TABLET_PAGES.has(old) else "case"
+	if not TABLET_PAGES.has(String(state["ui"].get("tablet_page", ""))):
+		state["ui"]["tablet_page"] = "case"
 	state["state_version"] = STATE_VERSION
 
 

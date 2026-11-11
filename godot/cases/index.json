@@ -5,7 +5,7 @@
    "difficulty": "standard",
    "file": "7-normal-60d-r10-I1.mcase",
    "season": "An ordinary season",
-   "sha256": "8ef0914a5338496342b1bd64eb545c07feb50098963610630b7fc253d3e58744",
+   "sha256": "59173d10d9f8cb4cac4c0621c7756053b7e041de4ef27c3265cb33d1a4c2b7de",
    "start_label": "Day 25 09:00",
    "title": "The Lighter Savings Tin",
    "town": "Greyford"
@@ -15,7 +15,7 @@
    "difficulty": "standard",
    "file": "15-normal-60d-r10-I1.mcase",
    "season": "An ordinary season",
-   "sha256": "eb9888958356f6bdec05f400d32ba4b002392ea53920700035ec079f4139b299",
+   "sha256": "5a38deb96400cd28a44d08669023dbb602d369d80456249de0318c7a491c45a3",
    "start_label": "Day 48 13:00",
    "title": "The Short Till at The Grey Heron",
    "town": "Kestrel Hollow"
@@ -25,7 +25,7 @@
    "difficulty": "standard",
    "file": "1-normal-60d-r10-I2.mcase",
    "season": "An ordinary season",
-   "sha256": "39a6fd3894a043c9d26f01f5ef3053e3327626c9332464770101503a9ccdbab5",
+   "sha256": "f173cfa2dd44f021ec800ab96f04bd4c16f9038a77a8ffce48fcf938264b4f5e",
    "start_label": "Day 23 19:00",
    "title": "The Short Till at The Grocery",
    "town": "Thornwick"
@@ -35,7 +35,7 @@
    "difficulty": "hard",
    "file": "3-normal-60d-r10-I1.mcase",
    "season": "An ordinary season",
-   "sha256": "615cc3fbbe98be7d33884aff5aebc63314ce50313c6b7145835f774237045567",
+   "sha256": "341d32e785915a20281aeb720839b5eefb2302600de4673257775e72975e75e7",
    "start_label": "Day 9 09:00",
    "title": "The Lighter Savings Tin",
    "town": "Lowbridge"
@@ -45,7 +45,7 @@
    "difficulty": "standard",
    "file": "9-normal-60d-r10-I1.mcase",
    "season": "An ordinary season",
-   "sha256": "4a4fedc7cb008c3f02062efde37d2e6e4643574b4603ec31c322d922598ba21c",
+   "sha256": "9706d7757f4c7e5cd65b1357fe408fd89066a8fec8fa8f734e7601eaac408dd7",
    "start_label": "Day 46 08:00",
    "title": "The Fight at The Brandt House",
    "town": "Lowbridge"
@@ -55,7 +55,7 @@
    "difficulty": "standard",
    "file": "2-scarcity-60d-r10-I1.mcase",
    "season": "A lean season",
-   "sha256": "f0f37b1639c783328f413b358df4b7def4be3527885bff78544ef252c96fd251",
+   "sha256": "de4921a22d506c70e31acb64aaab528f601e2e7d50cf442505eb08984b86864c",
    "start_label": "Day 15 13:00",
    "title": "The Short Till at The Crooked Pike",
    "town": "Lowbridge"
@@ -65,7 +65,7 @@
    "difficulty": "standard",
    "file": "4-scarcity-60d-r10-I5.mcase",
    "season": "A lean season",
-   "sha256": "ae2fe1b313cd3150cff5a79cb970b03225faa4805a65a006ce524b43884154a9",
+   "sha256": "caf23e6c282303fad00dc79fed2ce71bbfcbf89533b528af6e8148f6504faa33",
    "start_label": "Day 59 09:00",
    "title": "The Injuries of Felix Brandt",
    "town": "Ashcombe"
@@ -75,7 +75,7 @@
    "difficulty": "standard",
    "file": "1-scarcity-60d-r10-I3.mcase",
    "season": "A lean season",
-   "sha256": "fbacb335c56ab7a7172ee73436bf20e331291fd28b750a521ca835657f34052c",
+   "sha256": "540312060270db8230bb612adb30cad8121bb874d08b00132307876e64b66bed",
    "start_label": "Day 47 20:00",
    "title": "The Fight at The Harrow House",
    "town": "Greyford"
@@ -85,7 +85,7 @@
    "difficulty": "standard",
    "file": "3-crisis-60d-r10-I3.mcase",
    "season": "Hard times",
-   "sha256": "d1a0c338bd18f33364395fad45fa5c0c5c3571e3b553e380d36fde40005db246",
+   "sha256": "1f7894dcf50912470778da8b230dc4fdac8cb121c64e294f756c97b5f2bf5f0d",
    "start_label": "Day 20 13:00",
    "title": "The Short Till at The Drover's Rest",
    "town": "Ashcombe"
@@ -95,7 +95,7 @@
    "difficulty": "standard",
    "file": "1-crisis-60d-r10-I1.mcase",
    "season": "Hard times",
-   "sha256": "4e477f61f7458f1dc660fd4a7416a42a5b58643eff35ad1eeb9ec3f574c71c68",
+   "sha256": "56574cb56d7be3e722d30ebb69f6438359c60edbdbed9fa50d47244914d1cbf1",
    "start_label": "Day 28 12:00",
    "title": "The Fight at The Carver House",
    "town": "Ashcombe"
@@ -105,7 +105,7 @@
    "difficulty": "standard",
    "file": "2-crisis-60d-r10-I3.mcase",
    "season": "Hard times",
-   "sha256": "1a9ac0dc25f180cbc0d2980463c874e4a3bb545662fa669ada9c03199ce1f440",
+   "sha256": "bb0a1af068cdea9691b9b54068bb6349fb0d0be9a6c193ee86dc54f378580de6",
    "start_label": "Day 6 09:00",
    "title": "The Smashed Fence",
    "town": "Ashcombe"
@@ -115,7 +115,7 @@
    "difficulty": "standard",
    "file": "1-tension-60d-r10-I5.mcase",
    "season": "A troubled season",
-   "sha256": "34c03708e3fa20a7bd0294aeb9619a60bb43cc4f5f915227c64ee151af36074d",
+   "sha256": "4effaead17ebd0ce24e32e5a98402302dc6103ec1ecf182798096515b6741af9",
    "start_label": "Day 19 09:00",
    "title": "The Smashed Fence",
    "town": "Lowbridge"
@@ -125,7 +125,7 @@
    "difficulty": "standard",
    "file": "2-tension-60d-r10-I3.mcase",
    "season": "A troubled season",
-   "sha256": "ad16c85a8211cd91f5583a3977cf2eb26ba454b7e0e379ab9101d7549fba88d2",
+   "sha256": "e23ae864edc5fe55f75b3f19bd4663c1f055dc7f04d6ebe3f6ec2729789a1eb0",
    "start_label": "Day 24 09:00",
    "title": "Found in the Ditch",
    "town": "Kestrel Hollow"
@@ -135,7 +135,7 @@
    "difficulty": "gentle",
    "file": "5-tension-60d-r10-I4.mcase",
    "season": "A troubled season",
-   "sha256": "bcd63f389da076471fccaa6666cb36c6165a5e17750b7bee8f45693e33a2a188",
+   "sha256": "e57f9a8e42c56b25f2925816a27d364b08368f0e8b6afa6e6322a4002fd74c2c",
    "start_label": "Day 24 08:00",
    "title": "The Fight at The Crooked Pike",
    "town": "Thornwick"
@@ -145,7 +145,7 @@
    "difficulty": "standard",
    "file": "3-tension-60d-r10-I1.mcase",
    "season": "A troubled season",
-   "sha256": "5cf4ae9e61a569c5ea6f8fdf360481871bba14bfb9610f6fd4b409d44ab74610",
+   "sha256": "6323820b2b0f882ee4477473156ecb9fa29c37f4bd601563320f319258bc8b06",
    "start_label": "Day 11 09:00",
    "title": "The Lighter Savings Tin",
    "town": "Ashcombe"

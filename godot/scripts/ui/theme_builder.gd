@@ -79,6 +79,34 @@ static func build(settings: Dictionary) -> Theme:
 	t.set_stylebox("normal", "NavButtonActive", box(p["card_hi"], p["accent"], 2, 6, 10))
 	t.set_type_variation("NavButtonActive", "Button")
 	t.set_color("font_color", "NavButtonActive", p["accent"])
+	# --- the town map: buildings and the people you have seen
+	for v in [["MapTile", p["card"], p["line"], p["text"]], ["MapTileHere", p["card_hi"], p["accent"], p["accent"]],
+			["MapTileScene", p["card"], p["danger"], p["text"]], ["MapTileUnvisited", p["panel"], p["line"], p["muted"]]]:
+		t.set_type_variation(v[0], "Button")
+		t.set_stylebox("normal", v[0], box(v[1], v[2], bw + (1 if v[0] == "MapTileHere" else 0), 4, 8))
+		t.set_stylebox("hover", v[0], box(v[1].lightened(0.1), p["accent"], bw + 1, 4, 8))
+		t.set_stylebox("pressed", v[0], box(p["accent_dim"], p["accent"], bw + 1, 4, 8))
+		t.set_color("font_color", v[0], v[3])
+		t.set_font_size("font_size", v[0], max(14, int(base * 0.9)))
+	t.set_type_variation("PersonToken", "Button")
+	t.set_stylebox("normal", "PersonToken", box(p["accent_dim"], p["accent"], bw, 14, 5))
+	t.set_stylebox("hover", "PersonToken", box(p["accent"], p["accent"], bw, 14, 5))
+	t.set_stylebox("pressed", "PersonToken", box(p["accent"], p["text"], bw, 14, 5))
+	t.set_color("font_color", "PersonToken", p["text"])
+	t.set_color("font_hover_color", "PersonToken", p["bg"])
+	t.set_font_size("font_size", "PersonToken", max(13, int(base * 0.75)))
+
+	# --- the investigation tablet
+	for v in [["TabletFrame", box(Color("#0b0c10"), p["line"].lightened(0.15), 10, 22, 14)],
+			["TabletScreen", box(p["panel"], p["line"], 0, 10, 0)],
+			["TabletBar", box(p["card"], p["line"], 0, 8, 8)],
+			["LockedFile", box(p["panel"], p["line"], bw, 6, 12)],
+			["ActiveFile", box(p["card_hi"], p["accent"], 2, 6, 12)]]:
+		t.set_type_variation(v[0], "PanelContainer")
+		t.set_stylebox("panel", v[0], v[1])
+	t.set_type_variation("Dim", "PanelContainer")
+	t.set_stylebox("panel", "Dim", box(Color(0, 0, 0, 0.6), Color(0, 0, 0, 0), 0, 0, 0))
+
 	for k in ["normal", "hover", "pressed", "disabled", "focus"]:
 		t.set_stylebox(k, "CheckBox", StyleBoxEmpty.new())
 		t.set_stylebox(k, "CheckButton", StyleBoxEmpty.new())

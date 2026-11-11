@@ -4,7 +4,7 @@
 extends RefCounted
 
 ## The newest saved-state layout this build understands (Investigation.STATE_VERSION).
-const MAX_STATE_VERSION := 1
+const MAX_STATE_VERSION := 2
 const DEFAULT_SETTINGS := {"text_size": 1, "high_contrast": false, "fullscreen": false}
 
 var root: String
