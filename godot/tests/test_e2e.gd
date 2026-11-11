@@ -293,6 +293,12 @@ func _layout(where: String) -> void:
 	_walk(main.screen, view, problems)
 	var map = main.screen.find_child("TownMap", true, false) if main.screen != null else null
 	var tablet = main.screen.find_child("Tablet", true, false) if main.screen != null else null
+	if map != null and map.is_visible_in_tree():
+		var side = main.screen.find_child("LocationPanel", true, false)
+		if map.size.y < 300 or map.size.x < 300:
+			problems.append("the town map is only %dx%d" % [int(map.size.x), int(map.size.y)])
+		if side != null and side.size.y < 300:
+			problems.append("the location panel is only %d px tall" % int(side.size.y))
 	if map != null and map.is_visible_in_tree() and (tablet == null or not tablet.visible):
 		var rects := []
 		for c in map.get_children():

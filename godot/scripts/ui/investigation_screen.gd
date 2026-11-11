@@ -100,7 +100,9 @@ func _ready() -> void:
 	panel = Kit.vbox(10)
 	side.add_child(Kit.scroll(panel))
 	body.add_child(side)
-	root.add_child(Kit.margin(body, 14))
+	var holder := Kit.margin(body, 14)
+	holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(holder)
 	tablet = Tablet.new(self)
 	add_child(tablet)
 	refresh()
@@ -310,21 +312,26 @@ func _place_view() -> void:
 			var seen = engine.state["ui"]["read"].get(k)
 			var tag := ""
 			if seen != null:
-				tag = "  (read)" if seen["allowed"] else "  (refused)"
-			var rb := Kit.button("The %s%s" % [String(bk["title"]).to_lower(), tag], "Ask to read it", "TopicButton",
-					"ReadBook_" + String(k))
+				tag = "  (you may read it)" if seen["allowed"] else "  (refused)"
+			var brow := Kit.hbox(10)
+			brow.add_child(Kit.label(String(bk["title"]) + tag))
+			var rb := Kit.button("Read" if seen == null or seen["allowed"] else "Ask again", "Ask to read the %s" % String(bk["title"]).to_lower(),
+					"TopicButton", "ReadBook_" + String(k))
 			rb.pressed.connect(open_book.bind(k))
-			panel.add_child(rb)
+			brow.add_child(rb)
+			panel.add_child(brow)
 
 	var vehicles: Array = town.vehicles_at(pid)
 	if not vehicles.is_empty():
 		panel.add_child(Kit.label("Vehicles parked here", "SubheadingLabel"))
 		for vid in vehicles:
 			var mark := "  ✓" if engine.state["ui"]["searched"].has(vid) else ""
-			var vb := Kit.button("Examine %s%s" % [engine.vehicle(vid)["name"], mark], "Look the vehicle over",
-					"TopicButton", "Examine_" + String(vid))
+			var vrow := Kit.hbox(10)
+			vrow.add_child(Kit.label(cap(String(engine.vehicle(vid)["name"])) + mark))
+			var vb := Kit.button("Examine", "Look the vehicle over", "TopicButton", "Examine_" + String(vid))
 			vb.pressed.connect(open_vehicle.bind(vid))
-			panel.add_child(vb)
+			vrow.add_child(vb)
+			panel.add_child(vrow)
 
 	panel.add_child(Kit.spacer(6))
 	panel.add_child(Kit.label("Click a building on the map to go there, or someone you have seen to go and talk to them. "
@@ -340,9 +347,9 @@ func _arrival_card() -> Control:
 	v.add_child(Kit.label(hook["title"], "HeadingLabel"))
 	v.add_child(Kit.label(hook["text"]))
 	v.add_child(Kit.label("The time in question: " + String(hook["window_label"]), "AccentLabel"))
+	v.add_child(Kit.label("It happened at %s." % engine.place_name(town.scene()), "AccentLabel"))
 	if town.scene() != town.at():
-		var go := Kit.button("Go to %s, where it happened" % engine.place_name(town.scene()), "Walk to the scene",
-				"PrimaryButton", "GoToScene")
+		var go := Kit.button("Go there", "Walk to %s" % engine.place_name(town.scene()), "PrimaryButton", "GoToScene")
 		go.pressed.connect(go_to.bind(town.scene()))
 		v.add_child(go)
 	card.add_child(v)
