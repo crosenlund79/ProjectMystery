@@ -16,6 +16,8 @@ func run(t_, tree_: SceneTree) -> void:
 	main = load("res://scenes/main.tscn").instantiate()
 	main.user_root = "user://test_e2e/"
 	tree.root.add_child(main)
+	# A headless script run has a 64x64 window; lay the game out at the smallest window it allows instead.
+	_resize(Vector2(960, 640))
 	await _frames(2)
 	main.saves.reset_all()
 	main.show_main_menu()
@@ -135,6 +137,7 @@ func run(t_, tree_: SceneTree) -> void:
 	main.change_setting("text_size", 3)
 	main.change_setting("high_contrast", true)
 	t.eq(main.theme.default_font_size, 25, "text size not applied")
+	_resize(Vector2(1280, 800))
 	await _layout("settings, extra large text")
 
 	# every screen again at the largest text size, on a second case
@@ -172,10 +175,17 @@ func run(t_, tree_: SceneTree) -> void:
 	t.end()
 
 
+func _resize(to: Vector2) -> void:
+	main.anchor_right = 0.0
+	main.anchor_bottom = 0.0
+	main.position = Vector2.ZERO
+	main.size = to
+
+
 func _layout(where: String) -> void:
 	## Headless Godot still lays out Controls, so the sizes are real: nothing squeezed, collapsed or off screen.
 	await _frames(2)
-	var view: Vector2 = main.get_viewport_rect().size
+	var view: Vector2 = main.size
 	var problems := []
 	_walk(main.screen, view, problems)
 	t.check(problems.is_empty(), "layout on %s (window %dx%d): %s" % [where, int(view.x), int(view.y),

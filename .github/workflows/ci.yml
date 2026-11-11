@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/godot-dl
-          key: godot-${{ env.GODOT_RELEASE }}-win64-v1
+          key: godot-${{ env.GODOT_RELEASE }}-win64-v2
 
       - name: Install Godot ${{ env.GODOT_RELEASE }} and the Windows export templates
         shell: pwsh
@@ -58,9 +58,16 @@ jobs:
           New-Item -ItemType Directory -Force $dl | Out-Null
           $base = "https://github.com/godotengine/godot/releases/download/$env:GODOT_RELEASE"
           $zip = Join-Path $dl "godot.zip"
-          $tpz = Join-Path $dl "templates.tpz"
           if (-not (Test-Path $zip)) { curl.exe -sSL --fail -o $zip "$base/Godot_v$($env:GODOT_RELEASE)_win64.exe.zip" }
-          if (-not (Test-Path $tpz)) { curl.exe -sSL --fail -o $tpz "$base/Godot_v$($env:GODOT_RELEASE)_export_templates.tpz" }
+          # The template bundle holds every platform (about 1 GB); keep only the Windows templates in the cache.
+          $wintpl = Join-Path $dl "windows-templates"
+          if (-not (Test-Path (Join-Path $wintpl "windows_release_x86_64.exe"))) {
+            $tpz = Join-Path $env:RUNNER_TEMP "templates.tpz"
+            curl.exe -sSL --fail -o $tpz "$base/Godot_v$($env:GODOT_RELEASE)_export_templates.tpz"
+            New-Item -ItemType Directory -Force $wintpl | Out-Null
+            7z e $tpz "templates/windows_release_x86_64.exe" "templates/windows_debug_x86_64.exe" "templates/version.txt" "-o$wintpl" -y | Out-Null
+            Remove-Item $tpz
+          }
           $bin = Join-Path $env:RUNNER_TEMP "godot"
           Expand-Archive $zip -DestinationPath $bin -Force
           $console = Get-ChildItem $bin -Filter "*_console.exe" -Recurse | Select-Object -First 1
@@ -68,7 +75,7 @@ jobs:
           "GODOT=$($console.FullName -replace '\\', '/')" >> $env:GITHUB_ENV
           $tpl = Join-Path $env:APPDATA "Godot\export_templates\$($env:GODOT_VERSION).stable"
           New-Item -ItemType Directory -Force $tpl | Out-Null
-          7z e $tpz "templates/windows_release_x86_64.exe" "templates/windows_debug_x86_64.exe" "templates/version.txt" "-o$tpl" -y | Out-Null
+          Copy-Item (Join-Path $wintpl "*") $tpl -Force
           Get-ChildItem $tpl | Format-Table Name, Length
           & $console.FullName --version
 

@@ -23,7 +23,7 @@ The game needs no Python, no installer, no internet connection and no accounts o
 3. Double-click **`ProjectMystery.exe`**. If Windows shows "Windows protected your PC", choose **More info → Run
    anyway**. The game is not code-signed yet.
 
-Choose **New Case** and pick one of the 15 bundled cases, each from a different simulated town and season.
+Choose **New Case** and pick one of the 15 bundled cases, each taken from its own simulated history.
 Then investigate:
 
 * talk to people (pick a topic, follow up on names they mention, press someone who is holding back);

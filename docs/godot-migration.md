@@ -98,7 +98,11 @@ The seal is a spoiler guard, not encryption. Anyone determined can open it with 
 The other Godot suites cover case loading and validation, testimony rules (guarded, evasive, patience, the
 dead), permissions for places, vehicles and records, hints, the spoiler boundary, timeline conflicts (with
 expectations computed by Python), save and resume, and an end-to-end investigation through the real interface:
-menu, new case, talk, press, search, read, note, timeline, hint, leave, Continue, submit, reveal.
+menu, new case, talk, press, search, read, note, timeline, hint, leave, Continue, submit, reveal. Along the way
+the end-to-end test checks the computed layout of every screen. It runs again at the largest text size, and
+fails on squeezed text, collapsed buttons or anything that runs off the window. Headless Godot lays out
+Controls with real font metrics, so these sizes are the ones a player gets. It does not draw, so colours and
+looks are not tested.
 
 ## Versions
 

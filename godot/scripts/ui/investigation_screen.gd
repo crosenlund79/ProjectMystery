@@ -293,7 +293,7 @@ func _conversation(box: VBoxContainer) -> void:
 		b.pressed.connect(ask.bind(rid, t_[0], false))
 		topics.add_child(b)
 	box.add_child(topics)
-	var about := Kit.hbox()
+	var about := Kit.flow()
 	about.add_child(Kit.label("Ask about someone:", "", false))
 	var people := []
 	var ids := []
