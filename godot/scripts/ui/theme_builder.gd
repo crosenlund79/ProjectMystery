@@ -79,22 +79,61 @@ static func build(settings: Dictionary) -> Theme:
 	t.set_stylebox("normal", "NavButtonActive", box(p["card_hi"], p["accent"], 2, 6, 10))
 	t.set_type_variation("NavButtonActive", "Button")
 	t.set_color("font_color", "NavButtonActive", p["accent"])
-	# --- the town map: buildings and the people you have seen
-	for v in [["MapTile", p["card"], p["line"], p["text"]], ["MapTileHere", p["card_hi"], p["accent"], p["accent"]],
-			["MapTileScene", p["card"], p["danger"], p["text"]], ["MapTileUnvisited", p["panel"], p["line"], p["muted"]]]:
-		t.set_type_variation(v[0], "Button")
-		t.set_stylebox("normal", v[0], box(v[1], v[2], bw + (1 if v[0] == "MapTileHere" else 0), 4, 8))
-		t.set_stylebox("hover", v[0], box(v[1].lightened(0.1), p["accent"], bw + 1, 4, 8))
-		t.set_stylebox("pressed", v[0], box(p["accent_dim"], p["accent"], bw + 1, 4, 8))
-		t.set_color("font_color", v[0], v[3])
-		t.set_font_size("font_size", v[0], max(14, int(base * 0.9)))
+	# --- the town map: transparent buttons over the drawn buildings (scripts/ui/place_art.gd); the
+	# name sits on a sign under each building. Hover and keyboard focus draw a gold outline.
+	var art_h := int(base * 2.6)
+	t.set_constant("art_height", "MapTile", art_h)
+	var serif := SystemFont.new()
+	serif.font_names = PackedStringArray(["Georgia", "Cambria", "Palatino Linotype", "Book Antiqua", "DejaVu Serif",
+			"Liberation Serif", "Times New Roman", "serif"])
+	serif.font_weight = 600
+	var ink := Color("#ffffff") if hc else Color("#2a2118")
+	var accent: Color = p["accent"]
+	var soft := accent
+	soft.a = 0.16
+	for v in ["MapTile", "MapTileHere", "MapTileScene", "MapTileUnvisited"]:
+		t.set_type_variation(v, "Button")
+		var states := {"normal": box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 8, 8),
+				"hover": box(Color(1, 1, 1, 0.05), accent, 2, 8, 8),
+				"pressed": box(soft, accent, 2, 8, 8),
+				"focus": box(Color(0, 0, 0, 0), accent, 3, 8, 8)}
+		for st in states:
+			var sb: StyleBoxFlat = states[st]
+			sb.content_margin_top = art_h + 2
+			sb.content_margin_bottom = 5
+			t.set_stylebox(st, v, sb)
+		t.set_font("font", v, serif)
+		t.set_font_size("font_size", v, max(14, int(base * 0.9)))
+		for c in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color", "font_hover_pressed_color"]:
+			t.set_color(c, v, ink)
 	t.set_type_variation("PersonToken", "Button")
-	t.set_stylebox("normal", "PersonToken", box(p["accent_dim"], p["accent"], bw, 14, 5))
-	t.set_stylebox("hover", "PersonToken", box(p["accent"], p["accent"], bw, 14, 5))
-	t.set_stylebox("pressed", "PersonToken", box(p["accent"], p["text"], bw, 14, 5))
+	var tok := box(p["card_hi"], accent, 2, 99, 6)
+	tok.shadow_color = Color(0, 0, 0, 0.45)
+	tok.shadow_size = 3
+	tok.shadow_offset = Vector2(1, 2)
+	t.set_stylebox("normal", "PersonToken", tok)
+	t.set_stylebox("hover", "PersonToken", box(accent, p["text"], 2, 99, 6))
+	t.set_stylebox("pressed", "PersonToken", box(accent, p["text"], 2, 99, 6))
+	t.set_stylebox("focus", "PersonToken", box(Color(0, 0, 0, 0), p["text"], 2, 99, 6))
 	t.set_color("font_color", "PersonToken", p["text"])
 	t.set_color("font_hover_color", "PersonToken", p["bg"])
+	t.set_color("font_pressed_color", "PersonToken", p["bg"])
 	t.set_font_size("font_size", "PersonToken", max(13, int(base * 0.75)))
+
+	# --- the side panel beside the map: warmer, like a page from a field book
+	var side := box(p["panel"].lerp(p["paper"], 0.35), p["accent_dim"], 0, 10, 16)
+	side.border_width_left = 3
+	t.set_stylebox("panel", "Sidebar", side)
+	t.set_type_variation("Medallion", "PanelContainer")
+	t.set_stylebox("panel", "Medallion", box(p["accent_dim"], accent, 2, 99, 6))
+	t.set_type_variation("PlaceTitle", "Label")
+	t.set_font("font", "PlaceTitle", serif)
+	t.set_font_size("font_size", "PlaceTitle", int(base * 1.55))
+	t.set_color("font_color", "PlaceTitle", accent)
+	t.set_type_variation("SignLabel", "Label")
+	t.set_font("font", "SignLabel", serif)
+	t.set_font_size("font_size", "SignLabel", int(base * 1.1))
+	t.set_color("font_color", "SignLabel", p["text"])
 
 	# --- the investigation tablet
 	for v in [["TabletFrame", box(Color("#0b0c10"), p["line"].lightened(0.15), 10, 22, 14)],

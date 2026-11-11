@@ -46,7 +46,18 @@ func run(t_, tree_: SceneTree) -> void:
 	t.check(_find("ArrivalCard") != null, "no arrival card with the case")
 	t.check(not scr.tablet.visible, "the tablet should start closed")
 	t.check(_find("Tile_" + _node(town.scene())) != null, "the scene is not on the map")
+	t.check(_find("PlaceArt") != null, "the place you are at is not illustrated in the side panel")
 	await _layout("town, arrival")
+	# the map marks where you are, where it happened, and where you have not been yet
+	t.eq(_find("Tile_" + _node(town.at())).theme_type_variation, "MapTileHere", "current place not marked")
+	if town.scene() != town.at():
+		t.eq(_find("Tile_" + _node(town.scene())).theme_type_variation, "MapTileScene", "the scene not marked")
+	var unvisited := 0
+	for p in town.places():
+		if not town.visited(p["id"]) and p["id"] != town.scene():
+			unvisited += 1
+			t.eq(_find("Tile_" + _node(p["id"])).theme_type_variation, "MapTileUnvisited", "unvisited place not marked")
+	t.check(unvisited > 0, "no unvisited places at the start")
 	if _find("GoToScene") != null:
 		await _press("GoToScene")
 		t.eq(town.at(), town.scene(), "Go to the scene did not walk there")
@@ -265,6 +276,18 @@ func run(t_, tree_: SceneTree) -> void:
 	s2.close_tablet()
 	main.show_main_menu()
 	await _layout("main menu, extra large text")
+
+	# every bundled town is drawn, in normal and in high-contrast colours
+	main.change_setting("text_size", 1)
+	_resize(Vector2(960, 640))
+	var hc := false
+	for e in main.library.entries:
+		main.change_setting("high_contrast", hc)
+		main.open_case(e, true)
+		await _layout("town of %s%s" % [e["case_id"], " (high contrast)" if hc else ""])
+		t.eq(main.screen.map.get_child_count() >= main.engine.data["places"].size(), true, "buildings missing")
+		hc = not hc
+	main.show_main_menu()
 	main.change_setting("text_size", 1)
 	main.change_setting("high_contrast", false)
 	main.saves.reset_all()

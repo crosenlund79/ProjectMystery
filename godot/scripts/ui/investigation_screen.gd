@@ -13,6 +13,7 @@ const Clock = preload("res://scripts/core/clock.gd")
 const Investigation = preload("res://scripts/core/investigation.gd")
 const Town = preload("res://scripts/core/town.gd")
 const TownMap = preload("res://scripts/ui/town_map.gd")
+const PlaceArt = preload("res://scripts/ui/place_art.gd")
 const Tablet = preload("res://scripts/ui/tablet.gd")
 
 const QUESTIONS := {
@@ -272,27 +273,36 @@ func _place_view() -> void:
 		msg.name = "Banner"
 		w.add_child(msg)
 		panel.add_child(w)
-	panel.add_child(Kit.label(cap(String(p["name"])), "TitleLabel"))
+	panel.add_child(PlaceArt.View.new(String(p["kind"]), hash(pid), bool(app.settings.get("high_contrast", false)),
+			map.dusk))
+	panel.add_child(Kit.label(cap(String(p["name"])), "PlaceTitle"))
 	panel.add_child(Kit.label("%s  ·  %s" % [TownMap.KIND_NAMES.get(p["kind"], p["kind"]), _owners_text(p["owners"])],
-			"MutedLabel"))
+			"SmallLabel"))
 	if pid == town.scene():
-		panel.add_child(Kit.label("This is where it happened: " + String(engine.data["hook"]["title"]), "DangerLabel"))
+		var scene_note := Kit.panel("Warning")
+		scene_note.add_child(Kit.label("This is where it happened: " + String(engine.data["hook"]["title"]), "DangerLabel"))
+		panel.add_child(scene_note)
 
-	panel.add_child(Kit.label("People here", "SubheadingLabel"))
+	_section("People here")
 	var here: Array = town.people_here()
 	if here.is_empty():
 		panel.add_child(Kit.label("Nobody is here right now.", "MutedLabel"))
 	for rid in here:
 		var r: Dictionary = engine.resident(rid)
 		var row := Kit.hbox(10)
-		var extra := "  ·  injured" if r["condition"] == "injured" else ""
-		row.add_child(Kit.label("%s, %s%s" % [r["name"], r["occupation"], extra]))
+		row.add_child(medallion(r["name"]))
+		var who := Kit.vbox(0)
+		who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		who.add_child(Kit.label(r["name"], "SignLabel"))
+		who.add_child(Kit.label(String(r["occupation"]) + ("  ·  injured" if r["condition"] == "injured" else ""), "SmallLabel"))
+		row.add_child(who)
 		var b := Kit.button("Talk", "Talk to %s" % r["first"], "TopicButton", "Talk_" + String(rid))
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(talk_to.bind(rid))
 		row.add_child(b)
 		panel.add_child(row)
 
-	panel.add_child(Kit.label("Look around", "SubheadingLabel"))
+	_section("Look around")
 	var done = engine.state["ui"]["searched"].get(pid)
 	if done == null:
 		var private_: bool = not p["owners"].is_empty()
@@ -306,7 +316,7 @@ func _place_view() -> void:
 
 	var books: Array = town.records_at(pid)
 	if not books.is_empty():
-		panel.add_child(Kit.label("Records kept here", "SubheadingLabel"))
+		_section("Records kept here")
 		for k in books:
 			var bk: Dictionary = engine.data["records"][k]
 			var seen = engine.state["ui"]["read"].get(k)
@@ -314,7 +324,12 @@ func _place_view() -> void:
 			if seen != null:
 				tag = "  (you may read it)" if seen["allowed"] else "  (refused)"
 			var brow := Kit.hbox(10)
-			brow.add_child(Kit.label(String(bk["title"]) + tag))
+			var bl := Kit.vbox(0)
+			bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bl.add_child(Kit.label(String(bk["title"]), "SignLabel"))
+			if tag != "":
+				bl.add_child(Kit.label(tag.strip_edges().trim_prefix("(").trim_suffix(")"), "SmallLabel"))
+			brow.add_child(bl)
 			var rb := Kit.button("Read" if seen == null or seen["allowed"] else "Ask again", "Ask to read the %s" % String(bk["title"]).to_lower(),
 					"TopicButton", "ReadBook_" + String(k))
 			rb.pressed.connect(open_book.bind(k))
@@ -323,19 +338,41 @@ func _place_view() -> void:
 
 	var vehicles: Array = town.vehicles_at(pid)
 	if not vehicles.is_empty():
-		panel.add_child(Kit.label("Vehicles parked here", "SubheadingLabel"))
+		_section("Vehicles parked here")
 		for vid in vehicles:
 			var mark := "  ✓" if engine.state["ui"]["searched"].has(vid) else ""
 			var vrow := Kit.hbox(10)
-			vrow.add_child(Kit.label(cap(String(engine.vehicle(vid)["name"])) + mark))
+			vrow.add_child(Kit.label(cap(String(engine.vehicle(vid)["name"])) + mark, "SignLabel"))
 			var vb := Kit.button("Examine", "Look the vehicle over", "TopicButton", "Examine_" + String(vid))
 			vb.pressed.connect(open_vehicle.bind(vid))
 			vrow.add_child(vb)
 			panel.add_child(vrow)
 
 	panel.add_child(Kit.spacer(6))
-	panel.add_child(Kit.label("Click a building on the map to go there, or someone you have seen to go and talk to them. "
-			+ "Your tablet (T) keeps everything you learn.", "SmallLabel"))
+	panel.add_child(Kit.label("Click a building to walk there.  T opens your tablet.", "SmallLabel"))
+
+
+func _section(title: String) -> void:
+	panel.add_child(HSeparator.new())
+	panel.add_child(Kit.label(title, "SubheadingLabel"))
+
+
+static func initials(full_name: String) -> String:
+	var parts := full_name.split(" ")
+	return (parts[0].left(1) + (parts[parts.size() - 1].left(1) if parts.size() > 1 else "")).to_upper()
+
+
+func medallion(full_name: String) -> Control:
+	## A round initials badge, like the markers on the map.
+	var m := Kit.panel("Medallion")
+	m.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	m.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var l := Kit.label(initials(full_name), "SignLabel", false)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.custom_minimum_size = Vector2(30, 30)
+	m.add_child(l)
+	return m
 
 
 func _arrival_card() -> Control:
@@ -432,9 +469,14 @@ func _talk_view() -> void:
 	panel.add_child(_back_button())
 	var card := Kit.panel("Card")
 	var v := Kit.vbox(4)
-	v.add_child(Kit.label(r["name"], "HeadingLabel"))
+	var head := Kit.hbox(12)
+	head.add_child(medallion(r["name"]))
+	var nm := Kit.label(r["name"], "PlaceTitle")
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(nm)
+	v.add_child(head)
 	var home: String = engine.place_name(r["home"])
-	v.add_child(Kit.label("%s, %s  ·  lives at %s" % [String(r["occupation"]).capitalize(), r["age_group"], home], "MutedLabel"))
+	v.add_child(Kit.label("%s, %s  ·  lives at %s" % [String(r["occupation"]).capitalize(), r["age_group"], home], "SmallLabel"))
 	var t = engine.data["testimony"].get(rid)
 	if t != null:
 		var gw := int(engine.state["goodwill"].get(rid, t["goodwill"]))

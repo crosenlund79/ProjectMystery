@@ -50,7 +50,9 @@ godot/
   scripts/ui/
     main.gd                 main menu, New Case, Load Case, Settings, dialogs
     investigation_screen.gd the town: map, where you are, conversations, record books, vehicles
-    town_map.gd             the drawn street plan with buildings and the people you have seen
+    town_map.gd             the town map: buildings (transparent buttons over drawn art), people you
+                            have seen, roads, woods, the frame, the map key
+    place_art.gd            the drawings: a building or landmark per kind of place, trees, pins, compass
     tablet.gd               the investigator's tablet: notes, notebook, evidence, people, timeline,
                             theory, hints, locked case files
     timeline_chart.gd, reveal_screen.gd, theme_builder.gd, kit.gd
@@ -90,6 +92,24 @@ The game has two layers, so that an investigation feels like going places rather
   library appear as locked case files, shown for the feel of a working tablet. They are disabled buttons
   wired to nothing, and the end-to-end test proves that none of them can be opened from an active
   investigation.
+
+The map is drawn rather than boxed, using simple shapes and no image files (`scripts/ui/place_art.gd`). Each kind
+of place has its own silhouette:
+* homes as cottages with chimneys and roofs that vary by family;
+* the grocery with a striped awning;
+* the pub with a hanging sign and warm windows;
+* the clinic with a red cross;
+* the workshop as a barn with braced doors;
+* the mill with a water wheel on its stream;
+* the square as a cobbled plaza with a well and lamps;
+* the road as a fingerpost.
+
+The town sits in a clearing, with woods thickening towards the edges, a curving main road and dirt lanes.
+A frame carries the town's name, a compass and a key. Where you are has a gold sign, a lantern glow and a
+pin. The scene is ringed in red with a "!" badge. Places you have not visited are greyed out with dark
+windows. Hovering or tabbing to a building outlines it in gold. Cases that start in the evening are drawn in
+dusk colours. High contrast mode uses white outlines on black. The buildings are still ordinary buttons, so
+clicking, keyboard focus and tooltips are unchanged.
 
 The town's rules live in `scripts/core/town.gd`, with no UI code, and are tested on every bundled case
 (`tests/test_town.gd`). The tablet and the map only call them.

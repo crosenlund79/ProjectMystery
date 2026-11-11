@@ -7,6 +7,7 @@ const CaseLibrary = preload("res://scripts/core/case_library.gd")
 const Investigation = preload("res://scripts/core/investigation.gd")
 const Town = preload("res://scripts/core/town.gd")
 const Verdict = preload("res://scripts/core/verdict.gd")
+const PlaceArt = preload("res://scripts/ui/place_art.gd")
 
 var packages := []
 
@@ -22,6 +23,11 @@ func run(t, _tree) -> void:
 	for pkg in packages:
 		for r in pkg["investigation"]["residents"]:
 			t.check(r.has("now_at"), "%s: %s has no whereabouts" % [pkg["case_id"], r["id"]])
+	t.end()
+	t.begin("every place in every bundled town has its own drawing on the map")
+	for pkg in packages:
+		for p in pkg["investigation"]["places"]:
+			t.check(PlaceArt.art_style(p["kind"]) != "generic", "%s: no drawing for a %s" % [pkg["case_id"], p["kind"]])
 	t.end()
 	_moving(t)
 	_presence(t)
