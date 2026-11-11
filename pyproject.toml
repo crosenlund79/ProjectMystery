@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project-mystery"
+version = "0.1.0"
+description = "A small simulated town that produces true histories, and a text investigation of them."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+mystery = "mystery.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mystery*"]
