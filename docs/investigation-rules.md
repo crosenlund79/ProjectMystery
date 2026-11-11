@@ -54,6 +54,24 @@ Times are minutes since Day 1 00:00. "Entries" are notebook entries.
 The notebook never holds the same reference twice. Entry ids are a prefix letter plus a running number per
 prefix, and the numbering survives saving and loading.
 
+## The town (Godot only)
+
+The Godot game adds a world layer on top of these rules: `godot/scripts/core/town.gd`. The Python text game
+has no town, so this part has no parity fixtures. It changes where you can act, never what an action returns.
+
+* **Where people are:** each resident is at `now_at` for the whole investigation (time is frozen). In a package
+  without it, everyone is at home. The dead are nowhere.
+* **Moving:** `go(place)` takes you there, marks it visited, and records everyone present as seen there.
+  You start in the square.
+* **Finding someone:** `find(resident)` goes to where you saw them. If you have not seen them, it tries their
+  home and says when they are not in.
+* **Acting where you are:**
+  * `ask` needs the person present;
+  * `read` needs you at the place where the book is kept (`records[book].place`);
+  * `examine` needs you where the vehicle is parked;
+  * `look_around` inspects the place you are at.
+  Otherwise each call delegates to the rules above unchanged, with the same results and the same notebook.
+
 ## Hints: `hint()`
 
 Hints are bought in order. The tiers are Nudge, Lead and Strong hint, and each has a cost in credits (the

@@ -42,7 +42,7 @@ verify this. `test_a_bundled_case_regenerates_identically_from_its_seed` does it
 
 ## `investigation` (player-safe)
 
-This is the same object the Python game uses as `investigation.json` (schema `investigation/0.1`). Everything
+This is the same object the Python game uses as `investigation.json` (schema `investigation/0.2`). Everything
 in it is something a player may legitimately discover: the hook, residents, places and vehicles, consent
 decisions, what each resident is willing to say, reachable traces and records, the theory options, and the
 hint ladder. It never contains event ids, intents, accuracy flags, causal links or the answer. The validator
@@ -53,7 +53,7 @@ rejects any of these keys anywhere in it: `intent`, `causes`, `status`, `lie`, `
 | Field | Contents |
 |---|---|
 | `hook` | `title`, `text`, `kind`, `place`, `window` (two minute times), `window_label`, `discovered_by` |
-| `residents[]` | `id`, `name`, `first`, `occupation`, `age_group`, `household`, `home`, `condition` (`alive`/`injured`/`deceased`) |
+| `residents[]` | `id`, `name`, `first`, `occupation`, `age_group`, `household`, `home`, `condition` (`alive`/`injured`/`deceased`), `now_at` |
 | `places[]` | `id`, `name`, `kind`, `owners[]`, `allowed`, `reply`, `traces[]` (`id`, `description`); traces are empty when not allowed |
 | `vehicles[]` | `id`, `name`, `kind`, `household`, `location`, `allowed`, `reply`, `traces[]` |
 | `records{book}` | `title`, `place`, `allowed`, `reply`, `entries[]` (`id`, `time`, `text`); entries are empty when not allowed |
@@ -74,6 +74,12 @@ Each testimony item has these fields:
 | `guarded` | Only said when the player presses (loyalty or uncertainty). Withheld knowledge is not in the file at all; it only shows up as `evasive_topics`. |
 | `group` | Optional `{id, name, template}`, which lets "I saw A, B and C at…" merge into one line. |
 | `facts[]` | `{who, place, from, to, hedged}`: where the statement *claims* someone was, as the speaker recalls it, with lies and misremembered times included. The timeline and conflict detection use these. |
+
+`now_at` (added in schema 0.2, optional) is the place where the resident is at the frozen instant the case
+begins. It is `null` for the dead. This is present state that anyone in town could see by walking around, not
+anything about the past, and it is what the game's town uses to say who is where. Readers must accept packages
+without it (schema 0.1); the game then assumes everyone is at home. Validators reject a `now_at` that is not a
+known place.
 
 All times are minutes since Day 1 00:00. JSON numbers are integers; readers that parse numbers as floats
 (Godot does) convert them back to integers.

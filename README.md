@@ -23,16 +23,23 @@ The game needs no Python, no installer, no internet connection and no accounts o
 3. Double-click **`ProjectMystery.exe`**. If Windows shows "Windows protected your PC", choose **More info → Run
    anyway**. The game is not code-signed yet.
 
-Choose **New Case** and pick one of the 15 bundled cases, each taken from its own simulated history.
-Then investigate:
+Choose **New Case** and pick one of the 15 bundled cases, each taken from its own simulated history. You
+arrive in the town square, with the town laid out as a small map. Click a building to go there, and see who is
+there:
 
-* talk to people (pick a topic, follow up on names they mention, press someone who is holding back);
-* look around places and vehicles (private ones need the owner's agreement);
-* read the record books.
+* talk to people face to face (pick a topic, follow up on names they mention, press someone who is holding
+  back);
+* look around (private places need the owner's agreement);
+* read the record books where they are kept (the shop's ledger, the pub's bar tabs, the clinic's patient
+  log, the workshop's job book);
+* examine the vehicles where they are parked.
 
-Everything you learn is filed in the notebook. The timeline lines up who was where, and flags accounts that
-cannot both be true. When you are ready, choose **Solve the case…** to submit your theory, or give up, and the
-sealed truth is revealed and scored. The game saves after every action. **Continue** picks up where you left
+People stay where the simulation left them, and the ones you have met are marked on the map.
+
+Press **T**, or the **Tablet** button, for your investigator's tablet: case notes, the notebook, evidence,
+everyone you have met and what they said, the timeline, which flags accounts that cannot both be true, hints,
+and **Solve the case**, where you submit your theory or give up and see the scored truth. The game saves after
+every action. **Continue** picks up where you left
 off, **Load Case** opens other saved investigations or imports a `.mcase` file, and **Settings** has text size,
 high contrast and fullscreen. Saves live in `%APPDATA%\ProjectMystery`.
 

@@ -137,7 +137,7 @@ func go(pid: String) -> Dictionary:
 	if not _places.has(pid):
 		return {"op": "go", "error": "There is no such place in town."}
 	ui["at"] = pid
-	var first := not ui["visited"].has(pid)
+	var first: bool = not ui["visited"].has(pid)
 	ui["visited"][pid] = true
 	var here := people_at(pid)
 	for rid in here:

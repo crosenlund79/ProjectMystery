@@ -17,10 +17,13 @@ Delete that folder to start completely fresh.
 
 How to play
 -----------
-Choose New Case, pick a case, and investigate: talk to people, look around places
-and vehicles, read the record books, and keep an eye on the notebook and the timeline,
-which flags accounts that cannot both be true. When you are ready, choose
-"Solve the case..." to submit your theory and discover what really happened.
+Choose New Case and pick a case. You arrive in the town square. Click a building on
+the map to go there: talk to whoever is there, look around, read the record books kept
+there, and examine the vehicles parked there. People you have met are marked on the map.
+
+Press T (or the Tablet button) for your tablet: case notes, notebook, evidence, people,
+the timeline (it flags accounts that cannot both be true), hints, and "Solve the case",
+where you submit your theory and discover what really happened.
 
 Every case comes from a simulated town; nothing is scripted. Witnesses can be
 mistaken, can protect people, and the person responsible may lie.

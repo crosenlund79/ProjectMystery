@@ -22,8 +22,8 @@ The concept separates six concerns. This is where each one lives today and where
 | Character decisions and memories | `sim/decisions.py`, `sim/memory.py` | — | `godot/scripts/sim/` |
 | Objective event history | `sim/events.py` (append-only log, SHA-256 digest) | sealed inside each case package | `godot/scripts/sim/` |
 | Witness and evidence generation | `cases/export.py`, `cases/testimony.py`, `cases/suitability.py` | the `investigation` view of a package | `godot/scripts/sim/` → package |
-| Player investigation (rules) | `investigate/session.py`, `dialogue.py`, `notebook.py`, `verdict.py` | `godot/scripts/core/` | unchanged |
-| Presentation | `investigate/repl.py` (text), `launcher.py` | `godot/scripts/ui/` | unchanged |
+| Player investigation (rules) | `investigate/session.py`, `dialogue.py`, `notebook.py`, `verdict.py` | `godot/scripts/core/` (rules, plus `town.gd`: where you are, who is where) | unchanged |
+| Presentation | `investigate/repl.py` (text), `launcher.py` | `godot/scripts/ui/`: the town (world layer) and the tablet (personal layer) | unchanged |
 
 The rules and the presentation are separated in Godot as they are in Python. `scripts/core/` has no UI code: it
 works on plain dictionaries and returns plain results, and the tests drive it without a window.
@@ -41,15 +41,58 @@ godot/
   scripts/core/
     case_format.gd    read, validate and (for the verdict only) unseal case packages
     investigation.gd  the rules: questioning, permissions, notebook, hints, timeline, conflicts, theory
+    town.gd           the world layer: moving, who is where, and acting only where you are
     verdict.gd        scoring and the reveal model; the only code that opens the seal
     case_library.gd   bundled and imported cases
     save_store.gd     autosaves (one per case) and settings under user://
     clock.gd          minutes to "Day 3 14:20"
     smoke.gd          the self-test the exported .exe runs in CI
-  scripts/ui/         main menu, investigation screen, timeline chart, reveal, theme
+  scripts/ui/
+    main.gd                 main menu, New Case, Load Case, Settings, dialogs
+    investigation_screen.gd the town: map, where you are, conversations, record books, vehicles
+    town_map.gd             the drawn street plan with buildings and the people you have seen
+    tablet.gd               the investigator's tablet: notes, notebook, evidence, people, timeline,
+                            theory, hints, locked case files
+    timeline_chart.gd, reveal_screen.gd, theme_builder.gd, kit.gd
   scripts/sim/        reserved for the in-engine simulation (empty by design)
   tests/              headless test runner, suites and the parity fixtures
 ```
+
+## Playing: the town and the tablet
+
+The game has two layers, so that an investigation feels like going places rather than operating screens.
+
+* **The town (world layer).** The case's places are buildings on a compressed street plan: homes on two lanes,
+  trades on the high street, and the square, the road and the mill on the main road. You arrive in the square
+  and click a building to go there. The panel beside the map shows where you are:
+  * who is here, and talking to them (topics, follow-ups, pressing, the conversation so far);
+  * looking around;
+  * the record books kept here: the ledger at the shop, bar tabs at the pub, the patient log at the clinic,
+    the job book at the workshop;
+  * the vehicles parked here.
+
+  People you have seen stay marked on the map, and clicking one walks you back to them. People are where the
+  simulation left them when the case begins (`now_at`), so finding them is part of the work. The simulation
+  produces no letters or private papers, so none appear; homes hold only the traces that events left there.
+* **The tablet (personal layer).** Press T, or the Tablet button, to open it over the town, and again to put it
+  away. It holds:
+  * case notes and progress;
+  * the notebook, with marks and your own notes;
+  * evidence (what you found, what you copied, and the books you asked for, with a button to walk back to
+    them);
+  * a people directory (where you saw each person, what they told you, and "Go to");
+  * the timeline;
+  * the theory and the reveal;
+  * hints;
+  * case files.
+
+  The tablet never questions anyone or reads a book remotely: those happen in town. The other cases in the
+  library appear as locked case files, shown for the feel of a working tablet. They are disabled buttons
+  wired to nothing, and the end-to-end test proves that none of them can be opened from an active
+  investigation.
+
+The town's rules live in `scripts/core/town.gd`, with no UI code, and are tested on every bundled case
+(`tests/test_town.gd`). The tablet and the map only call them.
 
 ## Data flow
 
@@ -98,7 +141,10 @@ The seal is a spoiler guard, not encryption. Anyone determined can open it with 
 The other Godot suites cover case loading and validation, testimony rules (guarded, evasive, patience, the
 dead), permissions for places, vehicles and records, hints, the spoiler boundary, timeline conflicts (with
 expectations computed by Python), save and resume, and an end-to-end investigation through the real interface:
-menu, new case, talk, press, search, read, note, timeline, hint, leave, Continue, submit, reveal. Along the way
+menu, new case, arrive, walk, talk, press, look around, read a book where it is kept, examine a vehicle,
+click a person on the map, the tablet's pages (including trying to open locked case files), the T key, leave,
+Continue at the same spot, submit, reveal. The town suite checks presence, routing, and where records and
+vehicles can be used on all 15 cases, and that the town never opens the seal. Along the way
 the end-to-end test checks the computed layout of every screen. It runs again at the largest text size, and
 fails on squeezed text, collapsed buttons or anything that runs off the window. Headless Godot lays out
 Controls with real font metrics, so these sizes are the ones a player gets. It does not draw, so colours and
@@ -110,8 +156,8 @@ looks are not tested.
 |---|---|---|
 | `SIM_VERSION`, `CONFIG_VERSION` | `mystery/__init__.py` | simulation behaviour or tuning changes (old seeds then tell different stories) |
 | `format_version` | `mystery/cases/package.py`, `case_format.gd` | a field of the `.mcase` package is removed, renamed or changes meaning |
-| `schema` (`investigation/0.1`) | the player-safe view | the investigation view changes shape |
-| `STATE_VERSION` | `investigation.gd`, `save_store.gd` | the save layout changes (older saves are upgraded in `_normalize_state`; newer ones are refused rather than misread) |
+| `schema` (`investigation/0.2`) | the player-safe view | the investigation view changes shape (0.2 added `residents[].now_at`) |
+| `STATE_VERSION` | `investigation.gd`, `save_store.gd` | the save layout changes (older saves are upgraded in `_normalize_state`; newer ones are refused rather than misread). 2 added the town and the tablet. |
 
 After any change that alters generated cases, regenerate the library and the parity fixtures, then run both
 test suites:
@@ -182,8 +228,10 @@ Export Templates*), and choose *Project → Export → Windows Desktop*.
 
 * **Python and Godot equivalence covers the rules, not the simulation.** New towns are still generated in
   Python, and the game ships with a fixed library of 15 cases. Players can import more `.mcase` files.
-* The interface has been exercised by automated tests, not yet by human playtesting. Pacing, wording and
-  difficulty labels need real players.
+* The interface has been exercised by automated tests, not yet by human playtesting. Pacing, wording,
+  difficulty labels and the town map's look need real players.
+* Time stands still during an investigation: people stay where they were when the case began, so nobody moves
+  around town while you investigate. Moving people would need the simulation in the game (see above).
 * The executable is not code-signed, so SmartScreen warns on first launch.
 * The game uses the Compatibility (OpenGL 3.3) renderer for wide hardware support. Very old graphics drivers
   may still fail to start it.
