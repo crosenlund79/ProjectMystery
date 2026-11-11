@@ -26,6 +26,17 @@ const QUESTIONS := {
 	"vehicles": "Anything about the vehicles, or the road?",
 	"past": "Has there been other trouble in town lately?",
 }
+## Short button labels for the topics (the full question is the tooltip and goes in the conversation).
+const TOPIC_BUTTONS := {
+	"whereabouts": "Where were you?",
+	"window": "What did you see or hear?",
+	"incident": "What happened?",
+	"money": "Money troubles?",
+	"conflicts": "Arguments or grudges?",
+	"rumors": "What are people saying?",
+	"vehicles": "Vehicles and the road",
+	"past": "Other trouble lately?",
+}
 const MARKS := [["No mark", ""], ["Confirmed", "confirmed"], ["Disputed", "disputed"], ["Uncertain", "uncertain"],
 		["My inference", "inference"]]
 const FILTERS := [["All", ""], ["Statements", "statement"], ["Evidence", "trace"], ["Records", "record"],
@@ -289,7 +300,7 @@ func _conversation(box: VBoxContainer) -> void:
 		return
 	var topics := Kit.flow()
 	for t_ in Investigation.BASE_TOPICS:
-		var b := Kit.button(t_[1], QUESTIONS[t_[0]], "TopicButton", "Topic_" + t_[0])
+		var b := Kit.button(TOPIC_BUTTONS.get(t_[0], t_[1]), QUESTIONS[t_[0]], "TopicButton", "Topic_" + t_[0])
 		b.pressed.connect(ask.bind(rid, t_[0], false))
 		topics.add_child(b)
 	box.add_child(topics)
