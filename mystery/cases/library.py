@@ -40,6 +40,15 @@ PLAN = [
 ]
 SEED_BUDGET = 60
 PARITY_CASES = 5
+# The bundled library, pinned: these are the cases PLAN selected when the game shipped. Pinning keeps the
+# player's cases the same when the way cases are judged improves (select_cases still searches PLAN, for
+# finding new cases). (profile, seed, incident id), in library order.
+BUNDLED = [
+    ("normal", 7, "I1"), ("normal", 15, "I1"), ("normal", 1, "I2"), ("normal", 3, "I1"), ("normal", 9, "I1"),
+    ("scarcity", 2, "I1"), ("scarcity", 4, "I5"), ("scarcity", 1, "I3"),
+    ("crisis", 3, "I3"), ("crisis", 1, "I1"), ("crisis", 2, "I3"),
+    ("tension", 1, "I5"), ("tension", 2, "I3"), ("tension", 5, "I4"), ("tension", 3, "I1"),
+]
 
 
 def select_cases(plan=PLAN, budget: int = SEED_BUDGET, progress=None) -> tuple[list[dict], list[str]]:
@@ -73,9 +82,25 @@ def select_cases(plan=PLAN, budget: int = SEED_BUDGET, progress=None) -> tuple[l
     return chosen, missing
 
 
+def pinned_cases(pins=BUNDLED, progress=None) -> tuple[list[dict], list[str]]:
+    """The cases named in `pins`, each simulated from its seed; a pin that no longer yields its incident is
+    reported as missing."""
+    chosen, missing = [], []
+    for profile, seed, iid in pins:
+        hook, store = snapshot_hook(iid)
+        simulate(seed, DAYS, profile, case_hook=hook)
+        if progress:
+            progress(profile, seed)
+        if iid in store:
+            chosen.append(store[iid])
+        else:
+            missing.append(f"{profile}/{seed}/{iid}: no longer a case")
+    return chosen, missing
+
+
 def build_library(out_dir: str, progress=None) -> dict:
     """Write the .mcase files and index.json; returns the index."""
-    cases, missing = select_cases(progress=progress)
+    cases, missing = pinned_cases(progress=progress)
     os.makedirs(out_dir, exist_ok=True)
     for name in os.listdir(out_dir):
         if name.endswith(EXTENSION):

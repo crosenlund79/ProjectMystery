@@ -3310,7 +3310,7 @@
      "tier": null
     },
     {
-     "conflicts": [],
+     "contradictions": [],
      "entries": [
       {
        "conflicts": [],
@@ -6701,6 +6701,7 @@
        "responsible": "no one"
       },
       "assessment": "playable \u2014 2 independent channel(s), 10 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [],
       "missed": [
        {
         "needs_pressing": false,
@@ -10065,7 +10066,7 @@
      "tier": null
     },
     {
-     "conflicts": [],
+     "contradictions": [],
      "entries": [
       {
        "conflicts": [],
@@ -13428,6 +13429,7 @@
        "responsible": "no one"
       },
       "assessment": "playable \u2014 2 independent channel(s), 10 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [],
       "missed": [
        {
         "needs_pressing": false,
@@ -16787,7 +16789,7 @@
      "tier": null
     },
     {
-     "conflicts": [],
+     "contradictions": [],
      "entries": [
       {
        "conflicts": [],
@@ -20154,6 +20156,7 @@
        "responsible": "no one"
       },
       "assessment": "playable \u2014 2 independent channel(s), 10 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [],
       "missed": [
        {
         "needs_pressing": false,

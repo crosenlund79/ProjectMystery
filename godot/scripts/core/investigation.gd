@@ -33,7 +33,6 @@ const FOLLOWS := ["more", "earlier"]
 ## Topics about this case or about the past are answered whatever the time.
 const ALL_TIMES := ["incident", "past"]
 const MARKS := ["confirmed", "disputed", "uncertain", "inference"]
-const CONFLICT_MARGIN := 20
 const HINT_LABELS := {1: "Nudge", 2: "Lead", 3: "Strong hint"}
 ## Evidence management: one status per notebook entry. Ignoring hides, never deletes.
 const STATUSES := ["suspicious", "active", "ignored"]
@@ -639,55 +638,157 @@ func entry_less(a: String, b: String) -> bool:
 	return a.substr(1).to_int() < b.substr(1).to_int()
 
 
-func _conflict_less(p: Array, q: Array) -> bool:
-	if p[0] != q[0]:
-		return entry_less(p[0], q[0])
-	if p[1] != q[1]:
-		return entry_less(p[1], q[1])
-	return String(p[2]) < String(q[2])
-
-
 func _timed_less(a: Dictionary, b: Dictionary) -> bool:
 	if int(a["time"]) != int(b["time"]):
 		return int(a["time"]) < int(b["time"])
 	return String(a["id"]) < String(b["id"])
 
 
-func find_conflicts(facts: Array) -> Array:
-	## Pairs of entries that put the same person in two places at once (find_conflicts in Python).
-	var out := []
-	var seen := {}
+# --------------------------------------------------------------------------- contradictions
+## mystery/investigate/contradictions.py: clashes between notebook entries, grouped and classified by what
+## the player can see. firm (two first-hand accounts that cannot both be right), document (a record against
+## a statement), uncertain (one of them was not sure who they saw), secondhand (one of them was told), or
+## approximate (no bigger than the "about" in people's times: a minor note, never a conflict).
+const C_MARGIN := 20
+const C_APPROX := 60
+const C_DOCUMENT := 30
+const C_NEAR := 30
+const KIND_RANK := {"firm": 4, "document": 3, "secondhand": 2, "uncertain": 1, "approximate": 0}
+
+
+static func clash(a: Dictionary, b: Dictionary) -> Array:
+	## [depth, overlap start, overlap end] if two facts put one person in two places at once, else [].
+	var af := int(a["from"])
+	var at := int(a["to"])
+	var bf := int(b["from"])
+	var bt := int(b["to"])
+	if af == at and bf == bt:
+		return [0, af, af] if af == bf else []
+	if af == at or bf == bt:
+		var m := af if af == at else bf
+		var sf := bf if af == at else af
+		var st := bt if af == at else at
+		if sf + C_MARGIN < m and m < st - C_MARGIN:
+			return [mini(m - sf, st - m), m, m]
+		return []
+	var lo := maxi(af, bf)
+	var hi := mini(at, bt)
+	if hi - lo > 2 * C_MARGIN:
+		return [hi - lo, lo, hi]
+	return []
+
+
+static func kind_of(a: Dictionary, b: Dictionary, ia: Dictionary, ib: Dictionary, depth: int) -> String:
+	if ia["kind"] == "record" or ib["kind"] == "record":
+		return "document" if depth > C_DOCUMENT else "approximate"
+	if bool(a.get("hedged", false)) or bool(b.get("hedged", false)):
+		return "uncertain"
+	if ia["source"] == "told" or ib["source"] == "told":
+		return "secondhand"
+	return "firm" if depth > C_APPROX else "approximate"
+
+
+func _raw_less(p: Dictionary, q: Dictionary) -> bool:
+	## Python: (who, places, lo, hi, entry order of a, entry order of b).
+	if p["who"] != q["who"]:
+		return String(p["who"]) < String(q["who"])
+	for i in range(2):
+		if p["places"][i] != q["places"][i]:
+			return String(p["places"][i]) < String(q["places"][i])
+	if int(p["lo"]) != int(q["lo"]):
+		return int(p["lo"]) < int(q["lo"])
+	if int(p["hi"]) != int(q["hi"]):
+		return int(p["hi"]) < int(q["hi"])
+	if p["a"] != q["a"]:
+		return entry_less(p["a"], q["a"])
+	return entry_less(p["b"], q["b"])
+
+
+func _found_less(p: Dictionary, q: Dictionary) -> bool:
+	## Python: (overlap start, who, entry order of a, entry order of b).
+	if int(p["overlap"][0]) != int(q["overlap"][0]):
+		return int(p["overlap"][0]) < int(q["overlap"][0])
+	if p["who"] != q["who"]:
+		return String(p["who"]) < String(q["who"])
+	if p["a"] != q["a"]:
+		return entry_less(p["a"], q["a"])
+	return entry_less(p["b"], q["b"])
+
+
+static func _strength(r: Dictionary, info: Dictionary) -> Array:
+	var plain := (0 if info[r["a"]]["summary"] else 1) + (0 if info[r["b"]]["summary"] else 1)
+	return [KIND_RANK[r["kind"]], plain, int(r["depth"])]
+
+
+static func _stronger(p: Array, q: Array) -> bool:
+	for i in range(p.size()):
+		if p[i] != q[i]:
+			return p[i] > q[i]
+	return false
+
+
+static func _span(f: Dictionary) -> Dictionary:
+	return {"place": f["place"], "from": int(f["from"]), "to": int(f["to"])}
+
+
+func contradictions(facts: Array, info: Dictionary) -> Array:
+	var raw := []
 	for i in range(facts.size()):
-		var a = facts[i]
+		var a: Dictionary = facts[i]
 		for j in range(i + 1, facts.size()):
-			var b = facts[j]
+			var b: Dictionary = facts[j]
 			if a["who"] != b["who"] or a["place"] == b["place"] or a["entry"] == b["entry"]:
 				continue
-			var af := int(a["from"])
-			var at := int(a["to"])
-			var bf := int(b["from"])
-			var bt := int(b["to"])
-			var clash := false
-			if af == at and bf == bt:
-				clash = af == bf
-			elif af == at:
-				clash = bf + CONFLICT_MARGIN < af and af < bt - CONFLICT_MARGIN
-			elif bf == bt:
-				clash = af + CONFLICT_MARGIN < bf and bf < at - CONFLICT_MARGIN
-			else:
-				clash = mini(at, bt) - maxi(af, bf) > 2 * CONFLICT_MARGIN
-			if clash:
-				var x: String = a["entry"]
-				var y: String = b["entry"]
-				if entry_less(y, x):
-					var tmp := x
-					x = y
-					y = tmp
-				var key := "%s|%s|%s" % [x, y, a["who"]]
-				if not seen.has(key):
-					seen[key] = true
-					out.append([x, y, a["who"]])
-	out.sort_custom(_conflict_less)
+			var c := clash(a, b)
+			if c.is_empty():
+				continue
+			var x := a
+			var y := b
+			if entry_less(String(b["entry"]), String(a["entry"])):
+				x = b
+				y = a
+			var places := [String(x["place"]), String(y["place"])]
+			if places[1] < places[0]:
+				places = [places[1], places[0]]
+			raw.append({"who": a["who"], "places": places, "a": x["entry"], "b": y["entry"], "fa": x, "fb": y,
+					"depth": int(c[0]), "lo": int(c[1]), "hi": int(c[2]),
+					"kind": kind_of(x, y, info[x["entry"]], info[y["entry"]], int(c[0]))})
+	raw.sort_custom(_raw_less)
+	var groups := []
+	for r in raw:
+		var home = null
+		for g in groups:
+			if g["who"] == r["who"] and g["places"] == r["places"] and int(r["lo"]) <= int(g["hi"]) + C_NEAR \
+					and int(g["lo"]) <= int(r["hi"]) + C_NEAR:
+				home = g
+				break
+		if home == null:
+			groups.append({"who": r["who"], "places": r["places"], "lo": r["lo"], "hi": r["hi"], "pairs": [r]})
+		else:
+			home["lo"] = mini(int(home["lo"]), int(r["lo"]))
+			home["hi"] = maxi(int(home["hi"]), int(r["hi"]))
+			home["pairs"].append(r)
+	var out := []
+	for g in groups:
+		var best: Dictionary = g["pairs"][0]
+		for k in range(1, g["pairs"].size()):
+			var r: Dictionary = g["pairs"][k]
+			if _stronger(_strength(r, info), _strength(best, info)):
+				best = r
+		var seen := {}
+		var entries := []
+		var pairs := []
+		for r in g["pairs"]:
+			for e in [r["a"], r["b"]]:
+				if not seen.has(e):
+					seen[e] = true
+					entries.append(e)
+			pairs.append([r["a"], r["b"], r["kind"]])
+		entries.sort_custom(entry_less)
+		out.append({"who": g["who"], "kind": best["kind"], "a": best["a"], "b": best["b"],
+				"a_fact": _span(best["fa"]), "b_fact": _span(best["fb"]), "overlap": [int(best["lo"]), int(best["hi"])],
+				"depth": int(best["depth"]), "entries": entries, "pairs": pairs})
+	out.sort_custom(_found_less)
 	return out
 
 
@@ -698,27 +799,37 @@ func timeline() -> Dictionary:
 			timed.append(e)
 	timed.sort_custom(_timed_less)
 	var facts := []
+	var info := {}
 	for e in state["entries"]:
+		var src := {}
 		if e["source"] == "statement" and e.get("ref") != null:
-			var it := item(e["ref"])
-			for f in it.get("facts", []):
-				facts.append({"entry": e["id"], "who": f["who"], "place": f["place"], "from": int(f["from"]),
-						"to": int(f["to"]), "hedged": f.get("hedged", false)})
-	var conflicts := find_conflicts(facts)
+			src = item(String(e["ref"]))
+			info[e["id"]] = {"kind": "statement", "source": String(src.get("source", "")),
+					"summary": src.get("members", []).size() >= 2}
+		elif e["source"] == "record" and e.get("ref") != null:
+			src = record_entry(String(e["ref"]))
+			info[e["id"]] = {"kind": "record", "source": "record", "summary": false}
+		for f in src.get("facts", []):
+			facts.append({"entry": e["id"], "who": f["who"], "place": f["place"], "from": int(f["from"]),
+					"to": int(f["to"]), "hedged": f.get("hedged", false)})
+	var found := contradictions(facts, info)
 	var partner := {}
-	for c in conflicts:
-		for pair in [[c[0], c[1]], [c[1], c[0]]]:
-			if not partner.has(pair[0]):
-				partner[pair[0]] = []
-			if not partner[pair[0]].has(pair[1]):
-				partner[pair[0]].append(pair[1])
+	for c in found:
+		for p in c["pairs"]:
+			if p[2] == "approximate":
+				continue
+			for pair in [[p[0], p[1]], [p[1], p[0]]]:
+				if not partner.has(pair[0]):
+					partner[pair[0]] = []
+				if not partner[pair[0]].has(pair[1]):
+					partner[pair[0]].append(pair[1])
 	var entries := []
 	for e in timed:
 		var others: Array = partner.get(e["id"], []).duplicate()
 		others.sort_custom(entry_less)
 		entries.append({"id": e["id"], "time": int(e["time"]), "label": Clock.fmt(e["time"]), "text": e["text"],
 				"mark": e["mark"], "conflicts": others})
-	return {"entries": entries, "facts": facts, "conflicts": conflicts}
+	return {"entries": entries, "facts": facts, "contradictions": found}
 
 
 # --------------------------------------------------------------------------- conclusion

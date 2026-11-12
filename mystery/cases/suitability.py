@@ -66,14 +66,20 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
                          "points_to": "responsible" if ch["responsible"] else "mechanism",
                          "strength": strength, "needs_pressing": ch["guarded_only"]})
 
-    # --- contradictions: the responsible person's lie against accurate accounts
+    # --- contradictions: the responsible person's lie against an accurate account or a record, as the
+    # player's own timeline would show it (a firm clash or a record against a statement, not a matter of
+    # approximate times)
     lies = [k for k, a in b.audit.items() if a.get("lie") and a["speaker"] == R and not k.startswith("W-")
             and not a.get("exact_of")]
-    resp_witnesses = [c for c in channels if c["type"] == "witness" and c["points_to"] == "responsible"
-                      and c["strength"] == "strong"]
-    if lies and resp_witnesses:
-        channels.append({"type": "contradiction", "source": R, "keys": lies + [c["keys"][0] for c in resp_witnesses][:3],
-                         "points_to": "responsible", "strength": "strong", "needs_pressing": False})
+    exposing = exposed_lies(b, consent, records, lies) if lies else []
+    if exposing:
+        keys = []
+        for pair in exposing:
+            keys.extend(k for k in pair if k not in keys)
+        channels.append({"type": "contradiction", "source": R, "keys": keys[:6], "points_to": "responsible",
+                         "strength": "strong",
+                         "needs_pressing": all(b.audit.get(k, {}).get("disclosure") == "guarded"
+                                               for pair in exposing for k in pair if not k.startswith("R-"))})
 
     # --- physical traces
     for place, items in sorted(evidence.items()):
@@ -116,6 +122,25 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
 
     usable = [c for c in channels if c["strength"] in ("strong", "hearsay")]
     strong = [c for c in usable if c["strength"] == "strong"]
+    # How the answer can be worked out from evidence, rather than guessed from motive and gossip
+    routes = set()
+    if R is not None:
+        if exposing:
+            routes.add("contradiction")
+        victims_naming = [k for k, a in b.audit.items() if not k.startswith("W-") and not a.get("summary")
+                          and a["status"] == "accurate" and a["speaker"] != R and a["source"] == "self"
+                          and {"places_responsible", "mechanism"} <= set(a.get("supports", []))]
+        if eyewitnesses or victims_naming:
+            routes.add("eyewitness")
+        if only_one_there(b, consent, records) == R:
+            routes.add("opportunity")
+        for c in strong:
+            if c["type"] in ("physical", "documentary") and c["points_to"] == "responsible":
+                routes.add(c["type"])
+    else:
+        for c in strong:
+            if c["points_to"] == "mechanism" and c["type"] in ("physical", "documentary", "witness"):
+                routes.add(f"{c['type']} (what happened)")
     if R is not None:
         resp = [c for c in usable if c["points_to"] == "responsible"]
         resp_strong = [c for c in resp if c["strength"] == "strong"]
@@ -152,6 +177,8 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
         "outcome": inc.outcome,
         "noticed": inc.discovered_at is not None,
         "verdict": verdict,
+        "deduction": sorted(routes),
+        "solvable_by_evidence": bool(routes),
         "channels": channels,
         "independent_channels": len(usable),
         "responsible_channels": len([c for c in usable if c["points_to"] == "responsible"]),
@@ -164,6 +191,64 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
         "summaries": len([k for k, a in b.audit.items() if a.get("summary")]),
         "withheld": len([k for k in b.audit if k.startswith("W-")]),
     }
+
+
+def exposed_lies(b: "_Builder", consent: dict, records: dict, lies: list[str]) -> list[tuple[str, str]]:
+    """(lie, other) pairs where a lie of the responsible person clashes - firmly, or with a record - with an
+    accurate statement of someone else or a record line the player can read."""
+    from mystery.investigate.contradictions import contradictions
+    facts, info = [], {}
+    for rid, items in b.items.items():
+        for it in items:
+            a = b.audit[it["key"]]
+            if a.get("summary"):
+                continue
+            info[it["key"]] = {"kind": "statement", "source": it["source"], "summary": False}
+            facts.extend({"entry": it["key"], **f} for f in it["facts"])
+    for book, data in records.items():
+        if not consent[data["place"]]["allowed"]:
+            continue
+        for x in data["entries"]:
+            ref = f"R-{x.id}"
+            fx = b._record_facts(x, data["place"])
+            if fx:
+                info[ref] = {"kind": "record", "source": "record", "summary": False}
+                facts.extend({"entry": ref, **f} for f in fx)
+    told_in_full = {k: a["exact_of"] for k, a in b.audit.items() if a.get("exact_of") in lies}
+    out = []
+    for c in contradictions(facts, info):
+        for x, y, kind in c["pairs"]:
+            if kind not in ("firm", "document"):
+                continue
+            for lie, other in ((x, y), (y, x)):
+                lie = told_in_full.get(lie, lie)
+                if lie in lies and (other.startswith("R-") or (b.audit[other]["status"] == "accurate"
+                                                               and b.audit[other]["speaker"] != b.inc.responsible)):
+                    if (lie, other) not in out:
+                        out.append((lie, other))
+    return out
+
+
+def only_one_there(b: "_Builder", consent: dict, records: dict) -> str | None:
+    """The one person that accurate statements and readable records put at the scene during the time in
+    question, if there is exactly one: whoever it is had the only opportunity, as the player can work out."""
+    scene, (w0, w1) = b.inc.hook_place, b.window
+    there = set()
+    for rid, items in b.items.items():
+        for it in items:
+            a = b.audit[it["key"]]
+            if a.get("summary") or a["status"] != "accurate":
+                continue
+            for f in it["facts"]:
+                if f["place"] == scene and f["from"] < w1 and f["to"] > w0:
+                    there.add(f["who"])
+    for book, data in records.items():
+        if consent[data["place"]]["allowed"]:
+            for x in data["entries"]:
+                for f in b._record_facts(x, data["place"]):
+                    if f["place"] == scene and w0 < f["from"] < w1:
+                        there.add(f["who"])
+    return there.pop() if len(there) == 1 else None
 
 
 def hints(b: "_Builder", report: dict) -> list[dict]:

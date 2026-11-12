@@ -3467,7 +3467,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Not every account of the time in question holds together. Compare what people say about where they were.",
+     "text": "Someone was out and about at the time. Ask people what they saw or heard.",
      "tier": 1
     },
     {
@@ -3487,7 +3487,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Compare Nora's account of where they were with what Agnes says about the same hours.",
+     "text": "Greta also knows something about the time in question.",
      "tier": 3
     },
     {
@@ -3501,52 +3501,191 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S5",
-       "S24",
-       "clara"
-      ],
-      [
-       "S10",
-       "S28",
-       "arvid"
-      ],
-      [
-       "S10",
-       "S37",
-       "arvid"
-      ],
-      [
-       "S20",
-       "S35",
-       "bruno"
-      ],
-      [
-       "S24",
-       "S38",
-       "clara"
-      ],
-      [
-       "S28",
-       "S88",
-       "arvid"
-      ],
-      [
-       "S35",
-       "S115",
-       "bruno"
-      ],
-      [
-       "S36",
-       "S37",
-       "arvid"
-      ],
-      [
-       "S37",
-       "S88",
-       "arvid"
-      ]
+     "contradictions": [
+      {
+       "a": "S20",
+       "a_fact": {
+        "from": 32242,
+        "place": "clinic",
+        "to": 32708
+       },
+       "b": "S35",
+       "b_fact": {
+        "from": 32663,
+        "place": "square",
+        "to": 32663
+       },
+       "depth": 45,
+       "entries": [
+        "S20",
+        "S35",
+        "S115"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        32663,
+        32663
+       ],
+       "pairs": [
+        [
+         "S20",
+         "S35",
+         "approximate"
+        ],
+        [
+         "S35",
+         "S115",
+         "approximate"
+        ]
+       ],
+       "who": "bruno"
+      },
+      {
+       "a": "S5",
+       "a_fact": {
+        "from": 32705,
+        "place": "square",
+        "to": 32705
+       },
+       "b": "S24",
+       "b_fact": {
+        "from": 32656,
+        "place": "home:dunmore",
+        "to": 32763
+       },
+       "depth": 49,
+       "entries": [
+        "S5",
+        "S24"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        32705,
+        32705
+       ],
+       "pairs": [
+        [
+         "S5",
+         "S24",
+         "approximate"
+        ]
+       ],
+       "who": "clara"
+      },
+      {
+       "a": "S10",
+       "a_fact": {
+        "from": 32831,
+        "place": "pub",
+        "to": 33013
+       },
+       "b": "S37",
+       "b_fact": {
+        "from": 32953,
+        "place": "square",
+        "to": 32953
+       },
+       "depth": 60,
+       "entries": [
+        "S10",
+        "S36",
+        "S37",
+        "S88"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        32953,
+        32953
+       ],
+       "pairs": [
+        [
+         "S10",
+         "S37",
+         "uncertain"
+        ],
+        [
+         "S36",
+         "S37",
+         "uncertain"
+        ],
+        [
+         "S37",
+         "S88",
+         "uncertain"
+        ]
+       ],
+       "who": "arvid"
+      },
+      {
+       "a": "S10",
+       "a_fact": {
+        "from": 33017,
+        "place": "home:holm",
+        "to": 33614
+       },
+       "b": "S28",
+       "b_fact": {
+        "from": 32939,
+        "place": "pub",
+        "to": 33059
+       },
+       "depth": 42,
+       "entries": [
+        "S10",
+        "S28",
+        "S88"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        33017,
+        33059
+       ],
+       "pairs": [
+        [
+         "S10",
+         "S28",
+         "approximate"
+        ],
+        [
+         "S28",
+         "S88",
+         "approximate"
+        ]
+       ],
+       "who": "arvid"
+      },
+      {
+       "a": "S24",
+       "a_fact": {
+        "from": 33023,
+        "place": "home:dunmore",
+        "to": 33548
+       },
+       "b": "S38",
+       "b_fact": {
+        "from": 33057,
+        "place": "square",
+        "to": 33057
+       },
+       "depth": 34,
+       "entries": [
+        "S24",
+        "S38"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        33057,
+        33057
+       ],
+       "pairs": [
+        [
+         "S24",
+         "S38",
+         "uncertain"
+        ]
+       ],
+       "who": "clara"
+      }
      ],
      "entries": [
       {
@@ -3863,7 +4002,6 @@
       },
       {
        "conflicts": [
-        "S28",
         "S37"
        ],
        "id": "S10",
@@ -3873,9 +4011,7 @@
        "time": 32220
       },
       {
-       "conflicts": [
-        "S35"
-       ],
+       "conflicts": [],
        "id": "S115",
        "label": "Day 23 09:00",
        "mark": null,
@@ -3883,9 +4019,7 @@
        "time": 32220
       },
       {
-       "conflicts": [
-        "S35"
-       ],
+       "conflicts": [],
        "id": "S20",
        "label": "Day 23 09:00",
        "mark": null,
@@ -3894,7 +4028,6 @@
       },
       {
        "conflicts": [
-        "S5",
         "S38"
        ],
        "id": "S24",
@@ -3929,7 +4062,6 @@
       },
       {
        "conflicts": [
-        "S28",
         "S37"
        ],
        "id": "S88",
@@ -4011,10 +4143,7 @@
        "time": 32519
       },
       {
-       "conflicts": [
-        "S20",
-        "S115"
-       ],
+       "conflicts": [],
        "id": "S35",
        "label": "Day 23 16:23",
        "mark": null,
@@ -4022,9 +4151,7 @@
        "time": 32663
       },
       {
-       "conflicts": [
-        "S24"
-       ],
+       "conflicts": [],
        "id": "S5",
        "label": "Day 23 17:05",
        "mark": null,
@@ -4048,10 +4175,7 @@
        "time": 32770
       },
       {
-       "conflicts": [
-        "S10",
-        "S88"
-       ],
+       "conflicts": [],
        "id": "S28",
        "label": "Day 23 18:14",
        "mark": null,
@@ -6203,6 +6327,14 @@
        "place": "pub",
        "to": 34439,
        "who": "arvid"
+      },
+      {
+       "entry": "D1",
+       "from": 35091,
+       "hedged": false,
+       "place": "grocery",
+       "to": 35091,
+       "who": "bruno"
       }
      ],
      "op": "timeline"
@@ -8898,7 +9030,25 @@
        "outcome": "crime",
        "responsible": "Nora Holm"
       },
-      "assessment": "playable \u2014 3 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "assessment": "playable \u2014 2 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S10",
+        "b": "S37",
+        "explanation": "S10 was true. S37 was mistaken: misremembered the time.",
+        "kind": "uncertain",
+        "really": "honest mistake",
+        "who": "Arvid Holm"
+       },
+       {
+        "a": "S24",
+        "b": "S38",
+        "explanation": "S24 was true. S38 was mistaken: misremembered the time.",
+        "kind": "uncertain",
+        "really": "honest mistake",
+        "who": "Clara Dunmore"
+       }
+      ],
       "missed": [],
       "narrative": "Nora Holm took 1235 crowns from the Ash household savings tin at Day 23 10:49.",
       "plain_true": 96,
@@ -12491,7 +12641,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Not every account of the time in question holds together. Compare what people say about where they were.",
+     "text": "Someone was out and about at the time. Ask people what they saw or heard.",
      "tier": 1
     },
     {
@@ -12511,7 +12661,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Compare Nora's account of where they were with what Agnes says about the same hours.",
+     "text": "Greta also knows something about the time in question.",
      "tier": 3
     },
     {
@@ -12525,52 +12675,191 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S5",
-       "S24",
-       "clara"
-      ],
-      [
-       "S10",
-       "S28",
-       "arvid"
-      ],
-      [
-       "S10",
-       "S37",
-       "arvid"
-      ],
-      [
-       "S20",
-       "S35",
-       "bruno"
-      ],
-      [
-       "S24",
-       "S38",
-       "clara"
-      ],
-      [
-       "S28",
-       "S88",
-       "arvid"
-      ],
-      [
-       "S35",
-       "S115",
-       "bruno"
-      ],
-      [
-       "S36",
-       "S37",
-       "arvid"
-      ],
-      [
-       "S37",
-       "S88",
-       "arvid"
-      ]
+     "contradictions": [
+      {
+       "a": "S20",
+       "a_fact": {
+        "from": 32242,
+        "place": "clinic",
+        "to": 32708
+       },
+       "b": "S35",
+       "b_fact": {
+        "from": 32663,
+        "place": "square",
+        "to": 32663
+       },
+       "depth": 45,
+       "entries": [
+        "S20",
+        "S35",
+        "S115"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        32663,
+        32663
+       ],
+       "pairs": [
+        [
+         "S20",
+         "S35",
+         "approximate"
+        ],
+        [
+         "S35",
+         "S115",
+         "approximate"
+        ]
+       ],
+       "who": "bruno"
+      },
+      {
+       "a": "S5",
+       "a_fact": {
+        "from": 32705,
+        "place": "square",
+        "to": 32705
+       },
+       "b": "S24",
+       "b_fact": {
+        "from": 32656,
+        "place": "home:dunmore",
+        "to": 32763
+       },
+       "depth": 49,
+       "entries": [
+        "S5",
+        "S24"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        32705,
+        32705
+       ],
+       "pairs": [
+        [
+         "S5",
+         "S24",
+         "approximate"
+        ]
+       ],
+       "who": "clara"
+      },
+      {
+       "a": "S10",
+       "a_fact": {
+        "from": 32831,
+        "place": "pub",
+        "to": 33013
+       },
+       "b": "S37",
+       "b_fact": {
+        "from": 32953,
+        "place": "square",
+        "to": 32953
+       },
+       "depth": 60,
+       "entries": [
+        "S10",
+        "S36",
+        "S37",
+        "S88"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        32953,
+        32953
+       ],
+       "pairs": [
+        [
+         "S10",
+         "S37",
+         "uncertain"
+        ],
+        [
+         "S36",
+         "S37",
+         "uncertain"
+        ],
+        [
+         "S37",
+         "S88",
+         "uncertain"
+        ]
+       ],
+       "who": "arvid"
+      },
+      {
+       "a": "S10",
+       "a_fact": {
+        "from": 33017,
+        "place": "home:holm",
+        "to": 33614
+       },
+       "b": "S28",
+       "b_fact": {
+        "from": 32939,
+        "place": "pub",
+        "to": 33059
+       },
+       "depth": 42,
+       "entries": [
+        "S10",
+        "S28",
+        "S88"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        33017,
+        33059
+       ],
+       "pairs": [
+        [
+         "S10",
+         "S28",
+         "approximate"
+        ],
+        [
+         "S28",
+         "S88",
+         "approximate"
+        ]
+       ],
+       "who": "arvid"
+      },
+      {
+       "a": "S24",
+       "a_fact": {
+        "from": 33023,
+        "place": "home:dunmore",
+        "to": 33548
+       },
+       "b": "S38",
+       "b_fact": {
+        "from": 33057,
+        "place": "square",
+        "to": 33057
+       },
+       "depth": 34,
+       "entries": [
+        "S24",
+        "S38"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        33057,
+        33057
+       ],
+       "pairs": [
+        [
+         "S24",
+         "S38",
+         "uncertain"
+        ]
+       ],
+       "who": "clara"
+      }
      ],
      "entries": [
       {
@@ -12887,7 +13176,6 @@
       },
       {
        "conflicts": [
-        "S28",
         "S37"
        ],
        "id": "S10",
@@ -12897,9 +13185,7 @@
        "time": 32220
       },
       {
-       "conflicts": [
-        "S35"
-       ],
+       "conflicts": [],
        "id": "S115",
        "label": "Day 23 09:00",
        "mark": null,
@@ -12907,9 +13193,7 @@
        "time": 32220
       },
       {
-       "conflicts": [
-        "S35"
-       ],
+       "conflicts": [],
        "id": "S20",
        "label": "Day 23 09:00",
        "mark": null,
@@ -12918,7 +13202,6 @@
       },
       {
        "conflicts": [
-        "S5",
         "S38"
        ],
        "id": "S24",
@@ -12953,7 +13236,6 @@
       },
       {
        "conflicts": [
-        "S28",
         "S37"
        ],
        "id": "S88",
@@ -13035,10 +13317,7 @@
        "time": 32519
       },
       {
-       "conflicts": [
-        "S20",
-        "S115"
-       ],
+       "conflicts": [],
        "id": "S35",
        "label": "Day 23 16:23",
        "mark": null,
@@ -13046,9 +13325,7 @@
        "time": 32663
       },
       {
-       "conflicts": [
-        "S24"
-       ],
+       "conflicts": [],
        "id": "S5",
        "label": "Day 23 17:05",
        "mark": null,
@@ -13072,10 +13349,7 @@
        "time": 32770
       },
       {
-       "conflicts": [
-        "S10",
-        "S88"
-       ],
+       "conflicts": [],
        "id": "S28",
        "label": "Day 23 18:14",
        "mark": null,
@@ -15227,6 +15501,14 @@
        "place": "pub",
        "to": 34439,
        "who": "arvid"
+      },
+      {
+       "entry": "D1",
+       "from": 35091,
+       "hedged": false,
+       "place": "grocery",
+       "to": 35091,
+       "who": "bruno"
       }
      ],
      "op": "timeline"
@@ -17900,7 +18182,25 @@
        "outcome": "crime",
        "responsible": "Nora Holm"
       },
-      "assessment": "playable \u2014 3 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "assessment": "playable \u2014 2 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S10",
+        "b": "S37",
+        "explanation": "S10 was true. S37 was mistaken: misremembered the time.",
+        "kind": "uncertain",
+        "really": "honest mistake",
+        "who": "Arvid Holm"
+       },
+       {
+        "a": "S24",
+        "b": "S38",
+        "explanation": "S24 was true. S38 was mistaken: misremembered the time.",
+        "kind": "uncertain",
+        "really": "honest mistake",
+        "who": "Clara Dunmore"
+       }
+      ],
       "missed": [],
       "narrative": "Nora Holm took 1235 crowns from the Ash household savings tin at Day 23 10:49.",
       "plain_true": 98,
@@ -21486,7 +21786,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Not every account of the time in question holds together. Compare what people say about where they were.",
+     "text": "Someone was out and about at the time. Ask people what they saw or heard.",
      "tier": 1
     },
     {
@@ -21506,7 +21806,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Compare Nora's account of where they were with what Agnes says about the same hours.",
+     "text": "Greta also knows something about the time in question.",
      "tier": 3
     },
     {
@@ -21520,52 +21820,191 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S5",
-       "S24",
-       "clara"
-      ],
-      [
-       "S10",
-       "S28",
-       "arvid"
-      ],
-      [
-       "S10",
-       "S37",
-       "arvid"
-      ],
-      [
-       "S20",
-       "S35",
-       "bruno"
-      ],
-      [
-       "S24",
-       "S38",
-       "clara"
-      ],
-      [
-       "S28",
-       "S88",
-       "arvid"
-      ],
-      [
-       "S35",
-       "S115",
-       "bruno"
-      ],
-      [
-       "S36",
-       "S37",
-       "arvid"
-      ],
-      [
-       "S37",
-       "S88",
-       "arvid"
-      ]
+     "contradictions": [
+      {
+       "a": "S20",
+       "a_fact": {
+        "from": 32242,
+        "place": "clinic",
+        "to": 32708
+       },
+       "b": "S35",
+       "b_fact": {
+        "from": 32663,
+        "place": "square",
+        "to": 32663
+       },
+       "depth": 45,
+       "entries": [
+        "S20",
+        "S35",
+        "S115"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        32663,
+        32663
+       ],
+       "pairs": [
+        [
+         "S20",
+         "S35",
+         "approximate"
+        ],
+        [
+         "S35",
+         "S115",
+         "approximate"
+        ]
+       ],
+       "who": "bruno"
+      },
+      {
+       "a": "S5",
+       "a_fact": {
+        "from": 32705,
+        "place": "square",
+        "to": 32705
+       },
+       "b": "S24",
+       "b_fact": {
+        "from": 32656,
+        "place": "home:dunmore",
+        "to": 32763
+       },
+       "depth": 49,
+       "entries": [
+        "S5",
+        "S24"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        32705,
+        32705
+       ],
+       "pairs": [
+        [
+         "S5",
+         "S24",
+         "approximate"
+        ]
+       ],
+       "who": "clara"
+      },
+      {
+       "a": "S10",
+       "a_fact": {
+        "from": 32831,
+        "place": "pub",
+        "to": 33013
+       },
+       "b": "S37",
+       "b_fact": {
+        "from": 32953,
+        "place": "square",
+        "to": 32953
+       },
+       "depth": 60,
+       "entries": [
+        "S10",
+        "S36",
+        "S37",
+        "S88"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        32953,
+        32953
+       ],
+       "pairs": [
+        [
+         "S10",
+         "S37",
+         "uncertain"
+        ],
+        [
+         "S36",
+         "S37",
+         "uncertain"
+        ],
+        [
+         "S37",
+         "S88",
+         "uncertain"
+        ]
+       ],
+       "who": "arvid"
+      },
+      {
+       "a": "S10",
+       "a_fact": {
+        "from": 33017,
+        "place": "home:holm",
+        "to": 33614
+       },
+       "b": "S28",
+       "b_fact": {
+        "from": 32939,
+        "place": "pub",
+        "to": 33059
+       },
+       "depth": 42,
+       "entries": [
+        "S10",
+        "S28",
+        "S88"
+       ],
+       "kind": "approximate",
+       "overlap": [
+        33017,
+        33059
+       ],
+       "pairs": [
+        [
+         "S10",
+         "S28",
+         "approximate"
+        ],
+        [
+         "S28",
+         "S88",
+         "approximate"
+        ]
+       ],
+       "who": "arvid"
+      },
+      {
+       "a": "S24",
+       "a_fact": {
+        "from": 33023,
+        "place": "home:dunmore",
+        "to": 33548
+       },
+       "b": "S38",
+       "b_fact": {
+        "from": 33057,
+        "place": "square",
+        "to": 33057
+       },
+       "depth": 34,
+       "entries": [
+        "S24",
+        "S38"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        33057,
+        33057
+       ],
+       "pairs": [
+        [
+         "S24",
+         "S38",
+         "uncertain"
+        ]
+       ],
+       "who": "clara"
+      }
      ],
      "entries": [
       {
@@ -21882,7 +22321,6 @@
       },
       {
        "conflicts": [
-        "S28",
         "S37"
        ],
        "id": "S10",
@@ -21892,9 +22330,7 @@
        "time": 32220
       },
       {
-       "conflicts": [
-        "S35"
-       ],
+       "conflicts": [],
        "id": "S115",
        "label": "Day 23 09:00",
        "mark": null,
@@ -21902,9 +22338,7 @@
        "time": 32220
       },
       {
-       "conflicts": [
-        "S35"
-       ],
+       "conflicts": [],
        "id": "S20",
        "label": "Day 23 09:00",
        "mark": null,
@@ -21913,7 +22347,6 @@
       },
       {
        "conflicts": [
-        "S5",
         "S38"
        ],
        "id": "S24",
@@ -21948,7 +22381,6 @@
       },
       {
        "conflicts": [
-        "S28",
         "S37"
        ],
        "id": "S88",
@@ -22030,10 +22462,7 @@
        "time": 32519
       },
       {
-       "conflicts": [
-        "S20",
-        "S115"
-       ],
+       "conflicts": [],
        "id": "S35",
        "label": "Day 23 16:23",
        "mark": null,
@@ -22041,9 +22470,7 @@
        "time": 32663
       },
       {
-       "conflicts": [
-        "S24"
-       ],
+       "conflicts": [],
        "id": "S5",
        "label": "Day 23 17:05",
        "mark": null,
@@ -22067,10 +22494,7 @@
        "time": 32770
       },
       {
-       "conflicts": [
-        "S10",
-        "S88"
-       ],
+       "conflicts": [],
        "id": "S28",
        "label": "Day 23 18:14",
        "mark": null,
@@ -24222,6 +24646,14 @@
        "place": "pub",
        "to": 34439,
        "who": "arvid"
+      },
+      {
+       "entry": "D1",
+       "from": 35091,
+       "hedged": false,
+       "place": "grocery",
+       "to": 35091,
+       "who": "bruno"
       }
      ],
      "op": "timeline"
@@ -26899,7 +27331,25 @@
        "outcome": "crime",
        "responsible": "Nora Holm"
       },
-      "assessment": "playable \u2014 3 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "assessment": "playable \u2014 2 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S10",
+        "b": "S37",
+        "explanation": "S10 was true. S37 was mistaken: misremembered the time.",
+        "kind": "uncertain",
+        "really": "honest mistake",
+        "who": "Arvid Holm"
+       },
+       {
+        "a": "S24",
+        "b": "S38",
+        "explanation": "S24 was true. S38 was mistaken: misremembered the time.",
+        "kind": "uncertain",
+        "really": "honest mistake",
+        "who": "Clara Dunmore"
+       }
+      ],
       "missed": [],
       "narrative": "Nora Holm took 1235 crowns from the Ash household savings tin at Day 23 10:49.",
       "plain_true": 98,

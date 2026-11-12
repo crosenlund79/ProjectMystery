@@ -549,6 +549,26 @@ class _Builder:
         truth_text = describe_segments(sim, rid, segs, hazy)
         short = concise_segments(sim, segs, keep)
         short_text = describe_concise(sim, rid, short, hazy)
+        merged: list[list] = []
+        if lie:
+            ct = self.inc.time
+            home = sim.residents[rid].home
+            fake: list[list] = []
+            for loc, s, e in segs:
+                overlaps = s < ct + 45 and e > ct - 45 and loc != home
+                if fake and (fake[-1][0] == loc or overlaps):
+                    fake[-1][2] = e
+                else:
+                    fake.append([loc, s, e])
+            for seg in fake:
+                if merged and merged[-1][0] == seg[0]:
+                    merged[-1][2] = seg[2]
+                else:
+                    merged.append(list(seg))
+            # Someone who was openly where it happened (the pub they were drinking in, their own home) has
+            # nothing in their movements to hide: their account is simply true. (Leaving out a two-minute
+            # walk across the square is not a lie either: the plain account never mentions such walks.)
+            lie = not _same_story(concise_segments(sim, merged, keep), short)
         if not lie:
             def audit(sg: list[list]) -> dict:
                 return {"belief": None, "status": "accurate", "error": None, "disclosure": "open",
@@ -560,21 +580,6 @@ class _Builder:
                              facts=_segment_facts(rid, segs))
             self._file_behind(rid, plain, exact)
             return
-        ct = self.inc.time
-        home = sim.residents[rid].home
-        fake: list[list] = []
-        for loc, s, e in segs:
-            overlaps = s < ct + 45 and e > ct - 45 and loc != home
-            if fake and (fake[-1][0] == loc or overlaps):
-                fake[-1][2] = e
-            else:
-                fake.append([loc, s, e])
-        merged: list[list] = []
-        for seg in fake:
-            if merged and merged[-1][0] == seg[0]:
-                merged[-1][2] = seg[2]
-            else:
-                merged.append(list(seg))
         fake_short = concise_segments(sim, merged, keep)
 
         def lie_audit(sg: list[list], true_sg: list[list], true_text: str) -> dict:
@@ -676,12 +681,14 @@ class _Builder:
             now_at = sim.where(rid, now) if r.alive else None
             residents.append({"id": rid, "name": r.name, "first": r.first, "occupation": r.occupation,
                               "age_group": r.age_group, "household": r.household,
-                              "home": r.home, "condition": condition, "now_at": now_at})
+                              "home": r.home, "condition": condition, "now_at": now_at,
+                              "role": r.role, "demeanour": demeanour(r)})
         places = []
         for loc_id in sorted(sim.world.locations):
             loc = sim.world.locations[loc_id]
             c = consent[loc_id]
-            places.append({"id": loc_id, "name": loc.name, "kind": loc.kind,
+            look = house_look(sim, loc) if loc.kind == "home" else None
+            places.append({"id": loc_id, "name": loc.name, "kind": loc.kind, **({"look": look} if look else {}),
                            "owners": [o for o in loc.owners], "allowed": c["allowed"], "reply": c["reply"],
                            "traces": [{"id": f"T-{e.id}", "description": e.description}
                                       for e in evidence.get(loc_id, [])] if c["allowed"] else []})
@@ -696,7 +703,8 @@ class _Builder:
             c = consent[data["place"]]
             rec_out[book] = {"title": data["title"], "place": data["place"], "allowed": c["allowed"],
                              "reply": c["reply"],
-                             "entries": [{"id": f"R-{x.id}", "time": x.time, "text": x.text}
+                             "entries": [{"id": f"R-{x.id}", "time": x.time, "text": x.text,
+                                          "facts": self._record_facts(x, data["place"])}
                                          for x in data["entries"]] if c["allowed"] else []}
         testimony = {}
         for rid in sim.ids:
@@ -731,6 +739,20 @@ class _Builder:
             "hints": hints,
             "hint_credits": 6,
         }
+
+    # Lines that put a named person at the place where the book is kept, at the time written down: a drink
+    # or a meal on the tab, a sale or credit at the grocery, a patient treated, a car brought in. (Wages,
+    # takings and deliveries name no one who had to be there.) This is what the line itself says.
+    PRESENT_IN_RECORDS = {"drink", "pub_meal", "purchase", "credit", "treated", "repair", "ledger_error"}
+
+    def _record_facts(self, x, place: str) -> list[dict]:
+        ev = self.sim.log.by_id[x.event_id]
+        if ev.kind not in self.PRESENT_IN_RECORDS:
+            return []
+        named = [r.id for r in self.sim.residents.values() if r.name in x.text]
+        if len(named) != 1:
+            return []
+        return [{"who": named[0], "place": place, "from": x.time, "to": x.time, "hedged": False}]
 
     def _truth(self, report, evidence, records) -> dict:
         sim, inc, now = self.sim, self.inc, self.now
@@ -800,6 +822,40 @@ class _Builder:
         }
 
 
+# ------------------------------------------------------------------ what anyone can see
+# Only traits that play no part in deciding to steal, fight or drive drunk show in a face or a house
+# (sociability, stubbornness, diligence); honesty, empathy, caution, impulsiveness and temperance never do.
+def demeanour(r) -> str:
+    """How someone comes across when you talk to them."""
+    t = r.traits
+    if t.stubbornness >= 0.65:
+        return "gruff"
+    if t.sociability >= 0.62:
+        return "cheerful"
+    if t.sociability < 0.35:
+        return "reserved"
+    if t.diligence >= 0.62:
+        return "brisk"
+    return "easygoing"
+
+
+# A household's standing comes from the work its people do (which everyone in town knows), never from this
+# month's debts or troubles; the garden from how houseproud they are. Poverty is therefore no guide to
+# who did what: the house looks the same whether or not anyone in it is in trouble.
+STANDING = {"mill_owner": 3, "grocer": 2, "publican": 2, "nurse": 2, "mechanic": 1, "mill_hand": 1,
+            "shop_assistant": 1, "barhand": 1, "retiree": 1, "unemployed": 0}
+CONDITION = {3: "fine", 2: "tidy", 1: "plain", 0: "worn"}
+
+
+def house_look(sim, loc) -> dict:
+    members = [sim.residents[m] for m in sim.households.get(loc.household, []) if m in sim.residents]
+    standing = max((STANDING.get(m.role, 1) for m in members), default=1)
+    diligence = sum(m.traits.diligence for m in members) / max(1, len(members))
+    return {"style": loc.household, "condition": CONDITION[standing],
+            "garden": "neat" if diligence >= 0.5 else "wild",
+            "trades": sorted({m.role for m in members})}
+
+
 FACT_KINDS = {"presence", "sighting", "intoxicated", "argument", "assault", "noise", "saw_collision", "purchase",
               "injury", "struck", "fall", "death"}
 
@@ -817,6 +873,12 @@ def _facts(c: Claim) -> list[dict]:
     end = c.end if c.end is not None else c.start
     return [{"who": w, "place": c.location, "from": c.start, "to": end, "hedged": bool(c.hedged)}
             for w in who if w]
+
+
+def _same_story(a: list[list], b: list[list], slack: int = 20) -> bool:
+    """The same places in the same order, at times that differ by no more than a few minutes."""
+    return len(a) == len(b) and all(x[0] == y[0] and abs(x[1] - y[1]) <= slack and abs(x[2] - y[2]) <= slack
+                                    for x, y in zip(a, b))
 
 
 def _segment_facts(rid: str, segs: list[list]) -> list[dict]:

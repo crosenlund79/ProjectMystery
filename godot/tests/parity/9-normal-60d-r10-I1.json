@@ -3095,7 +3095,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Not every account of the time in question holds together. Compare what people say about where they were.",
+     "text": "Written records sometimes remember what people forget.",
      "tier": 1
     },
     {
@@ -3115,7 +3115,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Compare Henrik's account of where they were with what Viktor says about the same hours.",
+     "text": "The bar tab book at the crooked pike places someone at a telling time.",
      "tier": 3
     },
     {
@@ -3129,7 +3129,7 @@
      "tier": null
     },
     {
-     "conflicts": [],
+     "contradictions": [],
      "entries": [
       {
        "conflicts": [],
@@ -5798,12 +5798,6 @@
        },
        {
         "cited": false,
-        "entry": "S11",
-        "text": "Henrik: \"On Day 45, from about 19:30 I was at the Crooked Pike; home around 20:15.\"",
-        "verdict": "LIE \u2014 hid where they really were. Really: On Day 45, from about 19:30 I was at the Crooked Pike; home around 20:15."
-       },
-       {
-        "cited": false,
         "entry": "S20",
         "text": "Agnes: \"Henrik has come to me for money lately, and I had to say no.\"",
         "verdict": "true"
@@ -5955,7 +5949,8 @@
        "outcome": "crime",
        "responsible": "Henrik Brandt"
       },
-      "assessment": "playable \u2014 3 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "assessment": "playable \u2014 2 independent channel(s), 0 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [],
       "missed": [
        {
         "needs_pressing": false,
@@ -5969,7 +5964,7 @@
        }
       ],
       "narrative": "Henrik Brandt attacked Viktor Carver at the Brandt house at Day 45 21:57 during an argument.",
-      "plain_true": 46,
+      "plain_true": 47,
       "score": {
        "notes": [],
        "parts": [
@@ -9120,7 +9115,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Not every account of the time in question holds together. Compare what people say about where they were.",
+     "text": "Written records sometimes remember what people forget.",
      "tier": 1
     },
     {
@@ -9140,7 +9135,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Compare Henrik's account of where they were with what Viktor says about the same hours.",
+     "text": "The bar tab book at the crooked pike places someone at a telling time.",
      "tier": 3
     },
     {
@@ -9154,7 +9149,7 @@
      "tier": null
     },
     {
-     "conflicts": [],
+     "contradictions": [],
      "entries": [
       {
        "conflicts": [],
@@ -11795,12 +11790,6 @@
        },
        {
         "cited": false,
-        "entry": "S11",
-        "text": "Henrik: \"On Day 45, from about 19:30 I was at the Crooked Pike; home around 20:15.\"",
-        "verdict": "LIE \u2014 hid where they really were. Really: On Day 45, from about 19:30 I was at the Crooked Pike; home around 20:15."
-       },
-       {
-        "cited": false,
         "entry": "S20",
         "text": "Agnes: \"Henrik has come to me for money lately, and I had to say no.\"",
         "verdict": "true"
@@ -11952,7 +11941,8 @@
        "outcome": "crime",
        "responsible": "Henrik Brandt"
       },
-      "assessment": "playable \u2014 3 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "assessment": "playable \u2014 2 independent channel(s), 0 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [],
       "missed": [
        {
         "needs_pressing": false,
@@ -11966,7 +11956,7 @@
        }
       ],
       "narrative": "Henrik Brandt attacked Viktor Carver at the Brandt house at Day 45 21:57 during an argument.",
-      "plain_true": 49,
+      "plain_true": 50,
       "score": {
        "notes": [
         "You gave up without a theory."
@@ -15112,7 +15102,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Not every account of the time in question holds together. Compare what people say about where they were.",
+     "text": "Written records sometimes remember what people forget.",
      "tier": 1
     },
     {
@@ -15132,7 +15122,7 @@
      "message": null,
      "ok": true,
      "op": "hint",
-     "text": "Compare Henrik's account of where they were with what Viktor says about the same hours.",
+     "text": "The bar tab book at the crooked pike places someone at a telling time.",
      "tier": 3
     },
     {
@@ -15146,7 +15136,7 @@
      "tier": null
     },
     {
-     "conflicts": [],
+     "contradictions": [],
      "entries": [
       {
        "conflicts": [],
@@ -17791,12 +17781,6 @@
        },
        {
         "cited": false,
-        "entry": "S11",
-        "text": "Henrik: \"On Day 45, from about 19:30 I was at the Crooked Pike; home around 20:15.\"",
-        "verdict": "LIE \u2014 hid where they really were. Really: On Day 45, from about 19:30 I was at the Crooked Pike; home around 20:15."
-       },
-       {
-        "cited": false,
         "entry": "S20",
         "text": "Agnes: \"Henrik has come to me for money lately, and I had to say no.\"",
         "verdict": "true"
@@ -17948,7 +17932,8 @@
        "outcome": "crime",
        "responsible": "Henrik Brandt"
       },
-      "assessment": "playable \u2014 3 independent channel(s), 0 source(s) of misleading information, 1 lie(s) by the person responsible.",
+      "assessment": "playable \u2014 2 independent channel(s), 0 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [],
       "missed": [
        {
         "needs_pressing": false,
@@ -17962,7 +17947,7 @@
        }
       ],
       "narrative": "Henrik Brandt attacked Viktor Carver at the Brandt house at Day 45 21:57 during an argument.",
-      "plain_true": 49,
+      "plain_true": 50,
       "score": {
        "notes": [
         "There was enough evidence to say more than 'unresolved'."

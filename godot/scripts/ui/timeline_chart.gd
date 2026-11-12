@@ -27,9 +27,11 @@ var _hits: Array = []
 func setup(timeline: Dictionary, engine_, only_person := "", selected_entry := "") -> void:
 	engine = engine_
 	selected = selected_entry
-	for c in timeline["conflicts"]:
-		conflicted[c[0]] = true
-		conflicted[c[1]] = true
+	for c in timeline["contradictions"]:
+		for p in c["pairs"]:
+			if p[2] != "approximate":
+				conflicted[p[0]] = true
+				conflicted[p[1]] = true
 	for f in timeline["facts"]:
 		if only_person == "" or f["who"] == only_person:
 			facts.append(f)

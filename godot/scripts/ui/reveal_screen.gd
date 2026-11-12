@@ -41,6 +41,16 @@ func _ready() -> void:
 	col.add_child(_score())
 	col.add_child(_section("What actually happened", _timeline()))
 	col.add_child(_section("Your notebook, checked against the truth", _annotations()))
+	if not model.get("contradictions", []).is_empty():
+		var cv := Kit.vbox(6)
+		cv.name = "RevealContradictions"
+		for c in model["contradictions"]:
+			var style := "DangerLabel" if c["really"] == "lie" else ("AccentLabel" if c["really"] != "both true" else "GoodLabel")
+			var cc := Kit.vbox(2)
+			cc.add_child(Kit.label("[%s vs %s] about %s: %s" % [c["a"], c["b"], c["who"], String(c["really"]).to_upper()], style))
+			cc.add_child(Kit.label(String(c["explanation"]), "MutedLabel"))
+			cv.add_child(cc)
+		col.add_child(_section("The contradictions you found", cv))
 	if not model["missed"].is_empty():
 		var v := Kit.vbox(4)
 		for m in model["missed"]:

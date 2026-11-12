@@ -3880,12 +3880,39 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S31",
-       "S38",
-       "hedda"
-      ]
+     "contradictions": [
+      {
+       "a": "S31",
+       "a_fact": {
+        "from": 83354,
+        "place": "square",
+        "to": 83354
+       },
+       "b": "S38",
+       "b_fact": {
+        "from": 83354,
+        "place": "home:kessler",
+        "to": 83354
+       },
+       "depth": 0,
+       "entries": [
+        "S31",
+        "S38"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        83354,
+        83354
+       ],
+       "pairs": [
+        [
+         "S31",
+         "S38",
+         "uncertain"
+        ]
+       ],
+       "who": "hedda"
+      }
      ],
      "entries": [
       {
@@ -6173,6 +6200,14 @@
        "place": "grocery",
        "to": 84059,
        "who": "tomas"
+      },
+      {
+       "entry": "D1",
+       "from": 84047,
+       "hedged": false,
+       "place": "grocery",
+       "to": 84047,
+       "who": "clara"
       }
      ],
      "op": "timeline"
@@ -9746,6 +9781,16 @@
        "responsible": "no one"
       },
       "assessment": "playable \u2014 4 independent channel(s), 5 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S31",
+        "b": "S38",
+        "explanation": "Both were true: the times were only approximate.",
+        "kind": "uncertain",
+        "really": "both true",
+        "who": "Hedda Harrow"
+       }
+      ],
       "missed": [
        {
         "needs_pressing": false,
@@ -13689,12 +13734,39 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S31",
-       "S38",
-       "hedda"
-      ]
+     "contradictions": [
+      {
+       "a": "S31",
+       "a_fact": {
+        "from": 83354,
+        "place": "square",
+        "to": 83354
+       },
+       "b": "S38",
+       "b_fact": {
+        "from": 83354,
+        "place": "home:kessler",
+        "to": 83354
+       },
+       "depth": 0,
+       "entries": [
+        "S31",
+        "S38"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        83354,
+        83354
+       ],
+       "pairs": [
+        [
+         "S31",
+         "S38",
+         "uncertain"
+        ]
+       ],
+       "who": "hedda"
+      }
      ],
      "entries": [
       {
@@ -15982,6 +16054,14 @@
        "place": "grocery",
        "to": 84059,
        "who": "tomas"
+      },
+      {
+       "entry": "D1",
+       "from": 84047,
+       "hedged": false,
+       "place": "grocery",
+       "to": 84047,
+       "who": "clara"
       }
      ],
      "op": "timeline"
@@ -19526,6 +19606,16 @@
        "responsible": "no one"
       },
       "assessment": "playable \u2014 4 independent channel(s), 5 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S31",
+        "b": "S38",
+        "explanation": "Both were true: the times were only approximate.",
+        "kind": "uncertain",
+        "really": "both true",
+        "who": "Hedda Harrow"
+       }
+      ],
       "missed": [
        {
         "needs_pressing": false,
@@ -23464,12 +23554,39 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S31",
-       "S38",
-       "hedda"
-      ]
+     "contradictions": [
+      {
+       "a": "S31",
+       "a_fact": {
+        "from": 83354,
+        "place": "square",
+        "to": 83354
+       },
+       "b": "S38",
+       "b_fact": {
+        "from": 83354,
+        "place": "home:kessler",
+        "to": 83354
+       },
+       "depth": 0,
+       "entries": [
+        "S31",
+        "S38"
+       ],
+       "kind": "uncertain",
+       "overlap": [
+        83354,
+        83354
+       ],
+       "pairs": [
+        [
+         "S31",
+         "S38",
+         "uncertain"
+        ]
+       ],
+       "who": "hedda"
+      }
      ],
      "entries": [
       {
@@ -25757,6 +25874,14 @@
        "place": "grocery",
        "to": 84059,
        "who": "tomas"
+      },
+      {
+       "entry": "D1",
+       "from": 84047,
+       "hedged": false,
+       "place": "grocery",
+       "to": 84047,
+       "who": "clara"
       }
      ],
      "op": "timeline"
@@ -29305,6 +29430,16 @@
        "responsible": "no one"
       },
       "assessment": "playable \u2014 4 independent channel(s), 5 source(s) of misleading information, 0 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S31",
+        "b": "S38",
+        "explanation": "Both were true: the times were only approximate.",
+        "kind": "uncertain",
+        "really": "both true",
+        "who": "Hedda Harrow"
+       }
+      ],
       "missed": [
        {
         "needs_pressing": false,

@@ -119,7 +119,7 @@ def build_package(case: dict) -> dict:
         "summary": {
             "title": inv["hook"]["title"], "town": inv["town"], "start_label": inv["start_label"],
             "season": SEASONS.get(cfg["profile"], cfg["profile"]),
-            "difficulty": DIFFICULTY[case["suitability"]["verdict"]],
+            "difficulty": difficulty(case["suitability"]),
         },
         "investigation": inv,
         "sealed_truth": seal(truth, inv["case_id"]),
@@ -348,6 +348,16 @@ def _check_layers(items, where: str) -> list[str]:
             if front is None or k not in front.get("members", []):
                 p.append(f"{where}.{k}: filed behind a statement that does not list it")
     return p
+
+
+def difficulty(report: dict) -> str:
+    """From how well the case can be worked out: a case with no route to the answer through evidence (a
+    contradiction, an eyewitness, a trace, a record, the only one with the opportunity) is hard however
+    many people point at the right person."""
+    label = DIFFICULTY[report["verdict"]]
+    if report.get("solvable_by_evidence") is False and label in ("gentle", "standard"):
+        return "hard"
+    return label
 
 
 def library_index(entries: list[dict]) -> dict:

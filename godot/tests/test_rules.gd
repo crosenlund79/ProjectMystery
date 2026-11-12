@@ -269,19 +269,27 @@ func _spoilers_and_reveal(t) -> void:
 
 
 func _conflicts(t) -> void:
-	t.begin("conflict detection: someone in two places at once")
+	t.begin("contradictions: grouped, classified by what the player can see, explained")
 	var inv = Investigation.new(packages[0], null)
 	var facts := [
-		{"entry": "S1", "who": "ana", "place": "home", "from": 600, "to": 900},
-		{"entry": "S2", "who": "ana", "place": "square", "from": 700, "to": 700},
-		{"entry": "S3", "who": "ana", "place": "square", "from": 905, "to": 905},
-		{"entry": "S4", "who": "ben", "place": "pub", "from": 700, "to": 700},
-		{"entry": "S5", "who": "ana", "place": "pub", "from": 610, "to": 640},
-		{"entry": "S6", "who": "ana", "place": "home", "from": 700, "to": 700},
-		{"entry": "S7", "who": "ana", "place": "mill", "from": 820, "to": 1000},
-		{"entry": "S10", "who": "ana", "place": "road", "from": 700, "to": 700},
+		{"entry": "S1", "who": "ana", "place": "home", "from": 600, "to": 900, "hedged": false},
+		{"entry": "S2", "who": "ana", "place": "square", "from": 700, "to": 700, "hedged": false},
+		{"entry": "S3", "who": "ana", "place": "square", "from": 905, "to": 905, "hedged": false},
+		{"entry": "S4", "who": "ben", "place": "pub", "from": 700, "to": 700, "hedged": false},
+		{"entry": "S5", "who": "ana", "place": "pub", "from": 610, "to": 640, "hedged": false},
+		{"entry": "S6", "who": "ana", "place": "home", "from": 700, "to": 700, "hedged": false},
+		{"entry": "S7", "who": "ana", "place": "mill", "from": 820, "to": 1000, "hedged": false},
+		{"entry": "S10", "who": "ana", "place": "road", "from": 700, "to": 700, "hedged": false},
+		{"entry": "D1", "who": "ana", "place": "pub", "from": 760, "to": 760, "hedged": false},
+		{"entry": "S11", "who": "ana", "place": "square", "from": 650, "to": 650, "hedged": true},
 	]
-	# expected value computed by mystery.investigate.session.find_conflicts (the Python reference)
-	t.eq(inv.find_conflicts(facts), [["S1", "S2", "ana"], ["S1", "S7", "ana"], ["S1", "S10", "ana"], ["S2", "S6", "ana"],
-			["S2", "S10", "ana"], ["S3", "S7", "ana"], ["S6", "S10", "ana"]], "conflicts")
+	var info := {}
+	for f in facts:
+		info[f["entry"]] = {"kind": "statement", "source": "saw", "summary": false}
+	info["S10"]["source"] = "told"
+	info["D1"] = {"kind": "record", "source": "record", "summary": false}
+	info["S7"]["summary"] = true
+	# expected value computed by mystery.investigate.contradictions.contradictions (the Python reference)
+	var expected = [{"who": "ana", "kind": "uncertain", "a": "S1", "b": "S11", "a_fact": {"place": "home", "from": 600, "to": 900}, "b_fact": {"place": "square", "from": 650, "to": 650}, "overlap": [650, 650], "depth": 50, "entries": ["S1", "S11"], "pairs": [["S1", "S11", "uncertain"]]}, {"who": "ana", "kind": "firm", "a": "S1", "b": "S2", "a_fact": {"place": "home", "from": 600, "to": 900}, "b_fact": {"place": "square", "from": 700, "to": 700}, "overlap": [700, 700], "depth": 100, "entries": ["S1", "S2", "S6"], "pairs": [["S1", "S2", "firm"], ["S2", "S6", "approximate"]]}, {"who": "ana", "kind": "secondhand", "a": "S1", "b": "S10", "a_fact": {"place": "home", "from": 600, "to": 900}, "b_fact": {"place": "road", "from": 700, "to": 700}, "overlap": [700, 700], "depth": 100, "entries": ["S1", "S6", "S10"], "pairs": [["S1", "S10", "secondhand"], ["S6", "S10", "secondhand"]]}, {"who": "ana", "kind": "secondhand", "a": "S2", "b": "S10", "a_fact": {"place": "square", "from": 700, "to": 700}, "b_fact": {"place": "road", "from": 700, "to": 700}, "overlap": [700, 700], "depth": 0, "entries": ["S2", "S10"], "pairs": [["S2", "S10", "secondhand"]]}, {"who": "ana", "kind": "document", "a": "D1", "b": "S1", "a_fact": {"place": "pub", "from": 760, "to": 760}, "b_fact": {"place": "home", "from": 600, "to": 900}, "overlap": [760, 760], "depth": 140, "entries": ["D1", "S1"], "pairs": [["D1", "S1", "document"]]}, {"who": "ana", "kind": "firm", "a": "S1", "b": "S7", "a_fact": {"place": "home", "from": 600, "to": 900}, "b_fact": {"place": "mill", "from": 820, "to": 1000}, "overlap": [820, 900], "depth": 80, "entries": ["S1", "S7"], "pairs": [["S1", "S7", "firm"]]}, {"who": "ana", "kind": "firm", "a": "S3", "b": "S7", "a_fact": {"place": "square", "from": 905, "to": 905}, "b_fact": {"place": "mill", "from": 820, "to": 1000}, "overlap": [905, 905], "depth": 85, "entries": ["S3", "S7"], "pairs": [["S3", "S7", "firm"]]}]
+	t.eq(inv.contradictions(facts, info), expected, "contradictions")
 	t.end()

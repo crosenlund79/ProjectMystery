@@ -2887,17 +2887,55 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S13",
-       "S14",
-       "ida"
-      ],
-      [
-       "S14",
-       "S19",
-       "ida"
-      ]
+     "contradictions": [
+      {
+       "a": "S13",
+       "a_fact": {
+        "from": 6899,
+        "place": "pub",
+        "to": 7079
+       },
+       "b": "S14",
+       "b_fact": {
+        "from": 6853,
+        "place": "square",
+        "to": 7091
+       },
+       "depth": 180,
+       "entries": [
+        "S13",
+        "S14",
+        "S19"
+       ],
+       "kind": "firm",
+       "overlap": [
+        6899,
+        7079
+       ],
+       "pairs": [
+        [
+         "S13",
+         "S14",
+         "firm"
+        ],
+        [
+         "S14",
+         "S19",
+         "firm"
+        ],
+        [
+         "S13",
+         "S14",
+         "firm"
+        ],
+        [
+         "S14",
+         "S19",
+         "firm"
+        ]
+       ],
+       "who": "ida"
+      }
      ],
      "entries": [
       {
@@ -5346,6 +5384,16 @@
        "responsible": "Ida Kessler"
       },
       "assessment": "playable \u2014 7 independent channel(s), 3 source(s) of misleading information, 2 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S13",
+        "b": "S14",
+        "explanation": "S13 was true. S14 was a lie: hid where they really were.",
+        "kind": "firm",
+        "really": "lie",
+        "who": "Ida Kessler"
+       }
+      ],
       "missed": [
        {
         "needs_pressing": false,
@@ -8333,17 +8381,55 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S13",
-       "S14",
-       "ida"
-      ],
-      [
-       "S14",
-       "S19",
-       "ida"
-      ]
+     "contradictions": [
+      {
+       "a": "S13",
+       "a_fact": {
+        "from": 6899,
+        "place": "pub",
+        "to": 7079
+       },
+       "b": "S14",
+       "b_fact": {
+        "from": 6853,
+        "place": "square",
+        "to": 7091
+       },
+       "depth": 180,
+       "entries": [
+        "S13",
+        "S14",
+        "S19"
+       ],
+       "kind": "firm",
+       "overlap": [
+        6899,
+        7079
+       ],
+       "pairs": [
+        [
+         "S13",
+         "S14",
+         "firm"
+        ],
+        [
+         "S14",
+         "S19",
+         "firm"
+        ],
+        [
+         "S13",
+         "S14",
+         "firm"
+        ],
+        [
+         "S14",
+         "S19",
+         "firm"
+        ]
+       ],
+       "who": "ida"
+      }
      ],
      "entries": [
       {
@@ -10769,6 +10855,16 @@
        "responsible": "Ida Kessler"
       },
       "assessment": "playable \u2014 7 independent channel(s), 3 source(s) of misleading information, 2 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S13",
+        "b": "S14",
+        "explanation": "S13 was true. S14 was a lie: hid where they really were.",
+        "kind": "firm",
+        "really": "lie",
+        "who": "Ida Kessler"
+       }
+      ],
       "missed": [
        {
         "needs_pressing": false,
@@ -13749,17 +13845,55 @@
      "tier": null
     },
     {
-     "conflicts": [
-      [
-       "S13",
-       "S14",
-       "ida"
-      ],
-      [
-       "S14",
-       "S19",
-       "ida"
-      ]
+     "contradictions": [
+      {
+       "a": "S13",
+       "a_fact": {
+        "from": 6899,
+        "place": "pub",
+        "to": 7079
+       },
+       "b": "S14",
+       "b_fact": {
+        "from": 6853,
+        "place": "square",
+        "to": 7091
+       },
+       "depth": 180,
+       "entries": [
+        "S13",
+        "S14",
+        "S19"
+       ],
+       "kind": "firm",
+       "overlap": [
+        6899,
+        7079
+       ],
+       "pairs": [
+        [
+         "S13",
+         "S14",
+         "firm"
+        ],
+        [
+         "S14",
+         "S19",
+         "firm"
+        ],
+        [
+         "S13",
+         "S14",
+         "firm"
+        ],
+        [
+         "S14",
+         "S19",
+         "firm"
+        ]
+       ],
+       "who": "ida"
+      }
      ],
      "entries": [
       {
@@ -16189,6 +16323,16 @@
        "responsible": "Ida Kessler"
       },
       "assessment": "playable \u2014 7 independent channel(s), 3 source(s) of misleading information, 2 lie(s) by the person responsible.",
+      "contradictions": [
+       {
+        "a": "S13",
+        "b": "S14",
+        "explanation": "S13 was true. S14 was a lie: hid where they really were.",
+        "kind": "firm",
+        "really": "lie",
+        "who": "Ida Kessler"
+       }
+      ],
       "missed": [
        {
         "needs_pressing": false,

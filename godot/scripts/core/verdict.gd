@@ -11,6 +11,66 @@ const CaseFormat = preload("res://scripts/core/case_format.gd")
 static var unseal_count := 0
 
 
+const MISTAKES := {
+	"time_distorted": "had the time wrong",
+	"misremembered_time": "misremembered the time",
+	"misidentified": "mistook someone else for them",
+	"wrong suspect": "suspected the wrong person",
+	"mistaken_inference": "drew the wrong conclusion",
+}
+
+
+static func mistake_words(error) -> String:
+	var e := String(error) if error != null and String(error) != "" else "wrong"
+	if e.begins_with("partly wrong: "):
+		var rest := e.substr(14)
+		return "partly wrong: " + String(MISTAKES.get(rest, rest.replace("_", " ")))
+	return String(MISTAKES.get(e, e.replace("_", " ")))
+
+
+static func _explain_contradictions(inv, truth: Dictionary, names: Dictionary) -> Array:
+	## What really lay behind each contradiction on the player's timeline (verdict.explain_contradictions).
+	var out := []
+	for c in inv.timeline()["contradictions"]:
+		if c["kind"] == "approximate":
+			continue
+		var parts := PackedStringArray()
+		var statuses := []
+		var errors := []
+		for eid in [c["a"], c["b"]]:
+			var e: Dictionary = inv.entry(String(eid))
+			var a = truth["testimony_audit"].get(e.get("ref"))
+			if a == null:
+				parts.append("%s is a written record." % eid)
+				statuses.append("accurate")
+				continue
+			statuses.append(a["status"])
+			if a["status"] == "lie":
+				var why = a.get("error")
+				parts.append("%s was a lie: %s." % [eid, why if why != null and String(why) != "" else "deliberately false"])
+			elif a["status"] == "mistaken":
+				errors.append(String(a.get("error")) if a.get("error") != null else "")
+				parts.append("%s was mistaken: %s." % [eid, mistake_words(a.get("error"))])
+			else:
+				parts.append("%s was true." % eid)
+		var really := "both true"
+		var misidentified := false
+		for err in errors:
+			if String(err).ends_with("misidentified"):
+				misidentified = true
+		if statuses.has("lie"):
+			really = "lie"
+		elif misidentified:
+			really = "mistaken identity"
+		elif statuses.has("mistaken"):
+			really = "honest mistake"
+		else:
+			parts = PackedStringArray(["Both were true: the times were only approximate."])
+		out.append({"a": c["a"], "b": c["b"], "who": names.get(c["who"], c["who"]), "kind": c["kind"],
+				"really": really, "explanation": " ".join(parts)})
+	return out
+
+
 static func reveal(inv) -> Dictionary:
 	if not inv.state["concluded"]:
 		return {"op": "reveal", "sealed": true, "model": null}
@@ -208,6 +268,7 @@ static func _model(inv, truth: Dictionary, theory, result: Dictionary) -> Dictio
 		if verdict != "":
 			model["annotations"].append({"entry": e["id"], "text": e["text"], "verdict": verdict,
 					"cited": cited.has(e["id"])})
+	model["contradictions"] = _explain_contradictions(inv, truth, names)
 	var found := {}
 	for e in inv.state["entries"]:
 		found[e.get("ref")] = true

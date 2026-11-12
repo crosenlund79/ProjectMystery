@@ -80,6 +80,59 @@ def _cites(truth: dict, theory: dict | None) -> tuple[int, list[str]]:
     return min(20, 5 * good) - 3 * bad, notes
 
 
+MISTAKES = {
+    "time_distorted": "had the time wrong",
+    "misremembered_time": "misremembered the time",
+    "misidentified": "mistook someone else for them",
+    "wrong suspect": "suspected the wrong person",
+    "mistaken_inference": "drew the wrong conclusion",
+}
+
+
+def mistake_words(error: str | None) -> str:
+    error = error or "wrong"
+    if error.startswith("partly wrong: "):
+        return "partly wrong: " + MISTAKES.get(error[14:], error[14:].replace("_", " "))
+    return MISTAKES.get(error, error.replace("_", " "))
+
+
+def explain_contradictions(inv: "Investigation", truth: dict, names: dict) -> list[dict]:
+    """What really lay behind each contradiction on the player's timeline (minor timing notes left out):
+    a lie, a mistaken identity, another honest mistake, or two true accounts with approximate times."""
+    out = []
+    for c in inv.timeline_model()["contradictions"]:
+        if c["kind"] == "approximate":
+            continue
+        parts, statuses, errors = [], [], []
+        for eid in (c["a"], c["b"]):
+            e = inv.notebook.get(eid) or {}
+            a = truth["testimony_audit"].get(e.get("ref"))
+            if a is None:
+                parts.append(f"{eid} is a written record.")
+                statuses.append("accurate")
+                continue
+            statuses.append(a["status"])
+            if a["status"] == "lie":
+                parts.append(f"{eid} was a lie: {a.get('error') or 'deliberately false'}.")
+            elif a["status"] == "mistaken":
+                errors.append(a.get("error") or "")
+                parts.append(f"{eid} was mistaken: {mistake_words(a.get('error'))}.")
+            else:
+                parts.append(f"{eid} was true.")
+        if "lie" in statuses:
+            really = "lie"
+        elif any(err.endswith("misidentified") for err in errors):
+            really = "mistaken identity"
+        elif "mistaken" in statuses:
+            really = "honest mistake"
+        else:
+            really = "both true"
+            parts = ["Both were true: the times were only approximate."]
+        out.append({"a": c["a"], "b": c["b"], "who": names.get(c["who"], c["who"]), "kind": c["kind"],
+                    "really": really, "explanation": " ".join(parts)})
+    return out
+
+
 def reveal_model(inv: "Investigation") -> dict | None:
     """Score the theory and open the sealed truth. None while the case is still open.
 
@@ -150,6 +203,7 @@ def reveal_model(inv: "Investigation") -> dict | None:
         if verdict:
             model["annotations"].append({"entry": e["id"], "text": e["text"], "verdict": verdict,
                                          "cited": e["id"] in cited})
+    model["contradictions"] = explain_contradictions(inv, truth, names)
     found = {e.get("ref") for e in inv.notebook.entries()}
     for ref in list(found):
         # a summary you heard counts for the statements it stands for
@@ -193,6 +247,10 @@ def reveal(inv: "Investigation") -> list[str]:
         out.append(f"        -> {a['verdict']}")
     if model["plain_true"]:
         out.append(f"  ...and {model['plain_true']} other statement(s) you collected were true but beside the point.")
+    if model["contradictions"]:
+        out += ["", "THE CONTRADICTIONS YOU FOUND"]
+        for c in model["contradictions"]:
+            out.append(f"  [{c['a']} vs {c['b']}] about {c['who']}: {c['really']}. {c['explanation']}")
     if model["missed"]:
         out += ["", "LEADS YOU DID NOT FOLLOW"]
         out += [f"  - {m['type']} ({m['source']}){' — needed pressing' if m['needs_pressing'] else ''}"

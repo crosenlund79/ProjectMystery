@@ -10,6 +10,7 @@ import json
 import os
 
 from mystery.investigate import dialogue
+from mystery.investigate.contradictions import contradictions, entry_order
 from mystery.investigate.notebook import Notebook
 from mystery.sim.clock import fmt
 
@@ -18,42 +19,8 @@ class InvestigationError(RuntimeError):
     pass
 
 
-CONFLICT_MARGIN = 20  # minutes; times in testimony are only ever "about" right
-
-
 def _entry_order(eid: str) -> tuple:
-    return (eid[0], int(eid[1:]) if eid[1:].isdigit() else 0)
-
-
-def find_conflicts(facts: list[dict]) -> list[tuple[str, str, str]]:
-    """Pairs of notebook entries that put the same person in different places at once.
-
-    A moment conflicts with a stay elsewhere if it falls well inside it (by more than the
-    margin at both ends); two stays conflict if they overlap by more than twice the margin.
-    Same-place claims and claims within one entry never conflict.
-    """
-    out: list[tuple[str, str, str]] = []
-    seen = set()
-    for i, a in enumerate(facts):
-        for b in facts[i + 1:]:
-            if a["who"] != b["who"] or a["place"] == b["place"] or a["entry"] == b["entry"]:
-                continue
-            a_instant, b_instant = a["from"] == a["to"], b["from"] == b["to"]
-            if a_instant and b_instant:
-                clash = a["from"] == b["from"]
-            elif a_instant or b_instant:
-                moment, stay = (a, b) if a_instant else (b, a)
-                clash = stay["from"] + CONFLICT_MARGIN < moment["from"] < stay["to"] - CONFLICT_MARGIN
-            else:
-                clash = min(a["to"], b["to"]) - max(a["from"], b["from"]) > 2 * CONFLICT_MARGIN
-            if clash:
-                x, y = sorted((a["entry"], b["entry"]), key=_entry_order)
-                key = (x, y, a["who"])
-                if key not in seen:
-                    seen.add(key)
-                    out.append(key)
-    out.sort(key=lambda c: (_entry_order(c[0]), _entry_order(c[1]), c[2]))
-    return out
+    return entry_order(eid)
 
 
 def _span(ids: list[str]) -> str:
@@ -338,33 +305,69 @@ class Investigation:
         return self._items_by_key.get(key)
 
     def timeline_model(self) -> dict:
-        """Discovered entries in time order, the claims they make, and accounts that conflict."""
+        """Discovered entries in time order, the claims they make, and the accounts that cannot all be
+        true (mystery/investigate/contradictions.py)."""
         timed = [e for e in self.notebook.entries() if e["time"] is not None]
         timed.sort(key=lambda e: (e["time"], e["id"]))
         facts = []
+        info = {}
         for e in self.notebook.entries():
-            item = self._item(e["ref"]) if e["source"] == "statement" and e.get("ref") else None
-            for f in (item or {}).get("facts", []):
+            source = None
+            if e["source"] == "statement" and e.get("ref"):
+                item = self._item(e["ref"]) or {}
+                info[e["id"]] = {"kind": "statement", "source": item.get("source", ""),
+                                 "summary": len(item.get("members", [])) >= 2}
+                source = item
+            elif e["source"] == "record" and e.get("ref"):
+                source = self.record_entry(e["ref"]) or {}
+                info[e["id"]] = {"kind": "record", "source": "record", "summary": False}
+            for f in (source or {}).get("facts", []):
                 facts.append({"entry": e["id"], **f})
-        conflicts = find_conflicts(facts)
-        partner: dict[str, list[str]] = {}
-        for a, b, _who in conflicts:
-            partner.setdefault(a, []).append(b)
-            partner.setdefault(b, []).append(a)
+        found = contradictions(facts, info)
+        partner: dict[str, set] = {}
+        for c in found:
+            for x, y, kind in c["pairs"]:
+                if kind != "approximate":
+                    partner.setdefault(x, set()).add(y)
+                    partner.setdefault(y, set()).add(x)
         return {
             "entries": [{"id": e["id"], "time": e["time"], "label": fmt(e["time"]), "text": e["text"],
-                         "mark": e["mark"], "conflicts": sorted(set(partner.get(e["id"], [])), key=_entry_order)}
+                         "mark": e["mark"], "conflicts": sorted(partner.get(e["id"], []), key=_entry_order)}
                         for e in timed],
             "facts": facts,
-            "conflicts": [list(c) for c in conflicts],
+            "contradictions": found,
         }
 
     def timeline(self) -> list[str]:
+        model = self.timeline_model()
         out = []
-        for e in self.timeline_model()["entries"]:
+        for e in model["entries"]:
             mark = f" ({e['mark']})" if e["mark"] else ""
             out.append(f"  {e['label']}  [{e['id']}] {e['text']}{mark}")
-        return out or ["  (Nothing with a time on it yet.)"]
+        if not out:
+            return ["  (Nothing with a time on it yet.)"]
+        for c in model["contradictions"]:
+            out.append("  " + self.explain(c))
+        return out
+
+    KIND_WORDS = {
+        "firm": "CANNOT BOTH BE TRUE - someone is lying or mistaken",
+        "document": "A RECORD SAYS OTHERWISE",
+        "uncertain": "UNSURE SIGHTING - it was dark; perhaps it was someone else",
+        "secondhand": "SECONDHAND - one of them is repeating what they were told",
+        "approximate": "minor: the times are only approximate",
+    }
+
+    def explain(self, c: dict) -> str:
+        """One line: who, the two entries, where each puts them, and how far the times overlap."""
+        who = self.name(c["who"])
+        def where(f: dict) -> str:
+            span = fmt(f["from"]) if f["from"] == f["to"] else f"{fmt(f['from'])}-{fmt(f['to'])[-5:]}"
+            return f"{self._place_name(f['place'])} ({span})"
+        lo, hi = c["overlap"]
+        when = fmt(lo) if lo == hi else f"{fmt(lo)}-{fmt(hi)[-5:]}"
+        return (f"[{c['a']} vs {c['b']}] {who}: {where(c['a_fact'])} or {where(c['b_fact'])}? "
+                f"Clash at {when}, {c['depth']} min deep. {self.KIND_WORDS[c['kind']]}.")
 
     # ----------------------------------------------------------- hints
     def hint_result(self) -> dict:

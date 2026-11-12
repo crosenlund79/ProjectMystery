@@ -16,7 +16,7 @@ const PAGES := [
 	["notebook", "Notebook", "Everything you have learned, with your marks and your own notes"],
 	["evidence", "Evidence", "What you found in town and copied from records"],
 	["people", "People", "Everyone in town: who they are, where you saw them, what they told you"],
-	["timeline", "Timeline", "Discovered events in order, with conflicting accounts flagged"],
+	["timeline", "Timeline", "Discovered events in order, and what doesn't add up"],
 	["theory", "Solve the case", "Put forward your theory, or give up and see the truth"],
 	["hints", "Hints", "Spend investigation credits on a hint"],
 	["files", "Case files", "The other cases on this tablet"],
@@ -59,6 +59,7 @@ var notebook_filter := ""
 var status_filter := "all"
 var show_ignored := false
 var show_earlier := false
+var show_minor := false
 var mode_label: Label
 var timeline_person := ""
 var timeline_selected := ""
@@ -227,10 +228,10 @@ func _page_case() -> void:
 			alive += 1
 	var tl: Dictionary = engine.timeline()
 	var counts := _status_counts()
-	var progress := "You are at %s.\nPlaces visited: %d of %d\nPeople questioned: %d of %d\nNotebook entries: %d (suspicious %d, active %d, ignored %d)\nConflicting accounts spotted: %d" % [
+	var progress := "You are at %s.\nPlaces visited: %d of %d\nPeople questioned: %d of %d\nNotebook entries: %d (suspicious %d, active %d, ignored %d)\nAccounts that don't add up: %d" % [
 			engine.place_name(town.at()), engine.state["ui"]["visited"].size(), town.places().size(),
 			engine.state["goodwill"].size(), alive, engine.state["entries"].size(), counts["suspicious"], counts["active"],
-			counts["ignored"], tl["conflicts"].size()]
+			counts["ignored"], _real(tl["contradictions"]).size()]
 	if engine.mode() == "hobby":
 		progress += "\nHobby Detective: %d of %d checks left" % [engine.strikes_left(), Investigation.MAX_STRIKES]
 	else:
@@ -409,8 +410,8 @@ func _entry_card(e: Dictionary, conflicts: Array) -> Control:
 		v.add_child(Kit.label("This sums up several things they told you. Ask them to tell you more for the details.",
 				"MutedLabel"))
 	if not conflicts.is_empty():
-		v.add_child(Kit.label("⚠ Conflicts with " + ", ".join(PackedStringArray(conflicts))
-				+ " — they cannot all be true.", "DangerLabel"))
+		v.add_child(Kit.label("⚠ Doesn't add up with " + ", ".join(PackedStringArray(conflicts))
+				+ " — see the timeline.", "DangerLabel"))
 	v.add_child(_status_row(eid))
 	card.add_child(v)
 	return card
@@ -671,8 +672,9 @@ func _page_timeline() -> void:
 	opt.name = "TimelinePerson"
 	opt.item_selected.connect(_pick_timeline_person.bind(ids))
 	row.add_child(opt)
-	row.add_child(Kit.label("%d conflicting account(s) found" % tl["conflicts"].size(),
-			"DangerLabel" if not tl["conflicts"].is_empty() else "SmallLabel", false))
+	var real := _real(tl["contradictions"])
+	row.add_child(Kit.label("%d thing(s) don't add up" % real.size(),
+			"DangerLabel" if not real.is_empty() else "SmallLabel", false))
 	var ignored := 0
 	for e in tl["entries"]:
 		if engine.status_of(String(e["id"])) == "ignored":
@@ -709,6 +711,8 @@ func _page_timeline() -> void:
 				continue
 			kept.append(f)
 		tl["facts"] = kept
+	if not tl["contradictions"].is_empty():
+		content.add_child(_contradictions(tl["contradictions"]))
 	var chart = TimelineChart.new()
 	chart.name = "TimelineChart"
 	chart.high_contrast = bool(app.settings.get("high_contrast", false))
@@ -743,7 +747,7 @@ func _page_timeline() -> void:
 		var body := Kit.vbox(2)
 		body.add_child(Kit.label("[%s] %s" % [e["id"], e["text"]] + ("  (%s)" % e["mark"] if e["mark"] != null else "")))
 		if not e["conflicts"].is_empty():
-			body.add_child(Kit.label("⚠ Conflicts with " + ", ".join(PackedStringArray(e["conflicts"])), "DangerLabel"))
+			body.add_child(Kit.label("⚠ Doesn't add up with " + ", ".join(PackedStringArray(e["conflicts"])), "DangerLabel"))
 		body.add_child(_status_row(String(e["id"])))
 		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.add_child(body)
@@ -755,6 +759,83 @@ func _page_timeline() -> void:
 		list.add_child(Kit.label("Nothing to show here with these settings. Try showing earlier times or ignored entries.",
 				"MutedLabel"))
 	content.add_child(Kit.scroll(list))
+
+
+## How each kind of contradiction is named and explained (mystery/investigate/contradictions.py).
+const CONTRADICTION_TEXT := {
+	"firm": ["Can't both be true", "Two first-hand accounts disagree. Someone is lying, or someone is mistaken.", "DangerLabel"],
+	"document": ["A record says otherwise", "Written records are exact; people only remember times roughly. One of them is wrong.", "DangerLabel"],
+	"uncertain": ["Unsure sighting", "It was dark and they weren't sure who they saw. Perhaps it was someone else.", "InfoLabel"],
+	"secondhand": ["Secondhand account", "One of them is repeating what they were told. Stories change in the retelling.", "InfoLabel"],
+	"approximate": ["Minor timing difference", "People's times are only approximate. This is probably not a contradiction at all.", "SmallLabel"],
+}
+
+
+static func _real(found: Array) -> Array:
+	## Contradictions worth the name: everything but minor timing differences.
+	var out := []
+	for c in found:
+		if c["kind"] != "approximate":
+			out.append(c)
+	return out
+
+
+func _span_text(f: Dictionary) -> String:
+	if int(f["from"]) == int(f["to"]):
+		return "around %s" % Clock.fmt(f["from"])
+	var a := Clock.fmt(f["from"])
+	var b := Clock.fmt(f["to"])
+	if a.substr(0, a.find(" ", 4)) == b.substr(0, b.find(" ", 4)):
+		b = b.substr(b.find(" ", 4) + 1)
+	return "from %s to %s" % [a, b]
+
+
+func _contradictions(found: Array) -> Control:
+	## Each disagreement in plain words: which two entries, where each puts the person, and when they clash.
+	var box := Kit.vbox(8)
+	box.name = "Contradictions"
+	box.add_child(Kit.label("What doesn't add up", "PlaceTitle"))
+	var minor := 0
+	for i in range(found.size()):
+		var c: Dictionary = found[i]
+		if c["kind"] == "approximate":
+			minor += 1
+			if not show_minor:
+				continue
+		var txt: Array = CONTRADICTION_TEXT[c["kind"]]
+		var card := Kit.panel("Card")
+		card.name = "Contradiction_%d" % i
+		var v := Kit.vbox(4)
+		v.add_child(Kit.label("%s — %s" % [txt[0], _name(c["who"])], txt[2]))
+		for side in [["a", "a_fact"], ["b", "b_fact"]]:
+			var eid := String(c[side[0]])
+			var e: Dictionary = engine.entry(eid)
+			var f: Dictionary = c[side[1]]
+			v.add_child(Kit.label("[%s] %s" % [eid, e.get("text", "")]))
+			v.add_child(Kit.label("      puts %s at %s, %s" % [_name(c["who"]), engine.place_name(f["place"]), _span_text(f)],
+					"SmallLabel"))
+		var o: Array = c["overlap"]
+		var clash := "around %s" % Clock.fmt(o[0]) if int(o[0]) == int(o[1]) else _span_text({"from": o[0], "to": o[1]})
+		v.add_child(Kit.label("They clash %s: %d minutes into the other account. %s" % [clash, int(c["depth"]), txt[1]],
+				"MutedLabel"))
+		if c["entries"].size() > 2:
+			v.add_child(Kit.label("Also involved: " + ", ".join(PackedStringArray(c["entries"])), "SmallLabel"))
+		card.add_child(v)
+		box.add_child(card)
+	if minor > 0:
+		var mb := CheckBox.new()
+		mb.name = "ShowMinor"
+		mb.text = "Show minor timing differences (%d)" % minor
+		mb.tooltip_text = "Accounts that differ by no more than people's approximate times. Probably not contradictions."
+		mb.button_pressed = show_minor
+		mb.toggled.connect(_toggle_show_minor)
+		box.add_child(mb)
+	return box
+
+
+func _toggle_show_minor(on: bool) -> void:
+	show_minor = on
+	show_page("timeline")
 
 
 func _toggle_show_earlier(on: bool) -> void:
