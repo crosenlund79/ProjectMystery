@@ -187,11 +187,14 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
           mkdir -p shots
+          Xvfb :99 -screen 0 1600x1000x24 > /dev/null 2>&1 &
+          sleep 2
           set +e
-          timeout 300 xvfb-run -a -s "-screen 0 1600x1000x24" "$GODOT" --path godot --rendering-driver opengl3 \
+          DISPLAY=:99 timeout -k 10 260 "$GODOT" --path godot --display-driver x11 --rendering-driver opengl3 \
             --resolution 1280x800 -s res://tests/screenshots.gd -- --out="$PWD/shots" > shots.log 2>&1
+          echo "exit: $?"
           set -e
-          grep -E "shot |ERROR|error" shots.log | head -60 || true
+          head -c 6000 shots.log
           ls -la shots
           test "$(ls shots/*.png | wc -l)" -ge 10
 

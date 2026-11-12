@@ -11,6 +11,13 @@ func _initialize() -> void:
 		if a.begins_with("--out="):
 			out = a.substr(6)
 	DirAccess.make_dir_recursive_absolute(out)
+	print("display: %s, video: %s / %s" % [DisplayServer.get_name(), RenderingServer.get_video_adapter_vendor(),
+			RenderingServer.get_video_adapter_name()])
+	if DisplayServer.get_name() == "headless":
+		print("no display: nothing can be drawn, so there is nothing to photograph")
+		quit(2)
+		return
+	create_timer(220.0).timeout.connect(_give_up)
 	DisplayServer.window_set_size(Vector2i(1280, 800))
 	main = load("res://scenes/main.tscn").instantiate()
 	main.user_root = "user://shots/"
@@ -18,11 +25,18 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 
+func _give_up() -> void:
+	print("screenshots: out of time")
+	quit(3)
+
+
 func _shot(name: String) -> void:
-	for i in range(3):
+	for i in range(4):
 		await process_frame
-	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
+	if img == null or img.is_empty():
+		print("shot %s FAILED: no image" % name)
+		return
 	var err := img.save_png(out.path_join(name + ".png"))
 	print("shot %s %s %dx%d" % [name, "ok" if err == OK else "FAILED", img.get_width(), img.get_height()])
 
