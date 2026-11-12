@@ -218,7 +218,8 @@ func run(t_, tree_: SceneTree) -> void:
 		await _frames(1)
 	var timed := ""
 	for e in engine.timeline()["entries"]:
-		if engine.status_of(String(e["id"])) == "":
+		# the timeline starts at the time in question; earlier entries are behind "Show earlier times"
+		if engine.status_of(String(e["id"])) == "" and int(e["time"]) >= engine.recent_from():
 			timed = String(e["id"])
 			break
 	if timed != "":
