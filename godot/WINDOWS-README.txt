@@ -25,5 +25,10 @@ Press T (or the Tablet button) for your tablet: case notes, notebook, evidence, 
 the timeline (it flags accounts that cannot both be true), hints, and "Solve the case",
 where you submit your theory and discover what really happened.
 
+Mark what you learn Suspicious, Active or Ignore (ignored things are never deleted:
+"Review ignored" brings them back). Pick "Hobby Detective" on the New Case screen to be
+able to check suspicious items: you learn whether they are connected to the incident,
+never who did it. Three wrong calls and the checks are gone.
+
 Every case comes from a simulated town; nothing is scripted. Witnesses can be
 mistaken, can protect people, and the person responsible may lie.

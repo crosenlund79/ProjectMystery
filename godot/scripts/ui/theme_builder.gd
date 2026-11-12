@@ -54,7 +54,9 @@ static func build(settings: Dictionary) -> Theme:
 	for v in [["Backdrop", box(p["bg"], p["bg"], 0, 0, 0)], ["Sidebar", box(p["panel"], p["line"], 0, 0, 14)],
 			["Card", box(p["card"], p["line"], bw, 8, 16)], ["CardHi", box(p["card_hi"], p["accent_dim"], bw, 8, 16)],
 			["Paper", box(p["paper"], p["accent_dim"], bw, 4, 14)], ["TopBar", box(p["panel"], p["line"], 0, 0, 10)],
-			["Bubble", box(p["card_hi"], p["line"], bw, 10, 12)], ["Warning", box(p["card"], p["danger"], 2, 6, 10)]]:
+			["Bubble", box(p["card_hi"], p["line"], bw, 10, 12)], ["Warning", box(p["card"], p["danger"], 2, 6, 10)],
+			["CardSuspicious", box(p["card"], p["accent"], 2, 8, 16)], ["CardActive", box(p["card"], p["info"], 2, 8, 16)],
+			["CardIgnored", box(p["bg"], p["line"], bw, 8, 16)]]:
 		t.set_type_variation(v[0], "PanelContainer")
 		t.set_stylebox("panel", v[0], v[1])
 

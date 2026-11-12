@@ -5,7 +5,7 @@ extends RefCounted
 
 ## The newest saved-state layout this build understands (Investigation.STATE_VERSION).
 const MAX_STATE_VERSION := 2
-const DEFAULT_SETTINGS := {"text_size": 1, "high_contrast": false, "fullscreen": false}
+const DEFAULT_SETTINGS := {"text_size": 1, "high_contrast": false, "fullscreen": false, "mode": "normal"}
 
 var root: String
 
@@ -118,6 +118,8 @@ func load_settings() -> Dictionary:
 	out["text_size"] = clampi(int(out["text_size"]), 0, 3)
 	out["high_contrast"] = bool(out["high_contrast"])
 	out["fullscreen"] = bool(out["fullscreen"])
+	if not ["normal", "hobby"].has(String(out["mode"])):
+		out["mode"] = "normal"
 	return out
 
 

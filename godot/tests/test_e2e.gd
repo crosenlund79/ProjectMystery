@@ -33,8 +33,16 @@ func run(t_, tree_: SceneTree) -> void:
 	t.check(main.current == "new_case", "New Case screen not shown")
 	await _layout("new case")
 	var entry: Dictionary = main.library.entries[0]
+	# play this one as a Hobby Detective
+	var mode_opt = _find("ModeOption")
+	t.check(mode_opt != null, "no detective mode choice on the New Case screen")
+	if mode_opt != null:
+		mode_opt.select(1)
+		mode_opt.item_selected.emit(1)
+		await _frames(1)
 	await _press("StartCase_" + entry["case_id"])
 	t.check(main.current == "investigation", "case did not open")
+	t.eq(main.engine.mode(), "hobby", "the case did not start in Hobby Detective mode")
 	var scr = main.screen
 	var engine = main.engine
 	var town = scr.town
@@ -132,6 +140,40 @@ func run(t_, tree_: SceneTree) -> void:
 	await _frames(1)
 	t.check(engine.entry("N1").get("text", "") == "The timing of all this bothers me.", "note not saved")
 	await _layout("tablet, notebook")
+
+	# --- evidence management: one-click markers, a Hobby Detective check, ignore and review
+	var said := ""
+	var other := ""
+	for e in engine.state["entries"]:
+		if e["source"] == "statement":
+			if said == "":
+				said = String(e["id"])
+			elif other == "":
+				other = String(e["id"])
+	t.check(said != "" and other != "", "need two statements to sort")
+	await _press("Status_%s_suspicious" % said)
+	t.eq(engine.status_of(said), "suspicious", "one click did not mark it suspicious")
+	t.check(_find("Check_" + said) != null, "no check offered for a suspicious statement")
+	await _press("Check_" + said)
+	t.check(engine.state["checks"].has(said), "the check was not made")
+	t.check(_find("Verdict_" + said) != null, "the verdict is not shown on the card")
+	t.check(String(_find("ModeLabel").text).begins_with("Hobby Detective"), "mode not shown on the tablet")
+	await _press("Status_%s_ignored" % other)
+	t.eq(engine.status_of(other), "ignored", "one click did not ignore it")
+	t.check(_find("Entry_" + other) == null, "an ignored entry still shows in the notebook")
+	await _press("StatusFilter_ignored")
+	t.check(_find("Entry_" + other) != null and _find("IgnoredNotice") != null, "Review ignored does not show it")
+	await _layout("tablet, review ignored")
+	await _press("Restore_" + other)
+	t.eq(engine.status_of(other), "", "Restore did not bring it back")
+	t.check(_find("Entry_" + other) == null, "a restored entry still shows under Review ignored")
+	await _press("StatusFilter_all")
+	t.check(_find("Entry_" + other) != null, "a restored entry is missing from Everything")
+	await _press("Status_%s_ignored" % other)
+	t.check(_find("Entry_" + other) == null, "Everything shows ignored entries")
+	await _press("Status_%s_active" % said)
+	await _press("Status_%s_suspicious" % said)
+	t.eq(engine.status_of(said), "suspicious", "switching status did not stick")
 	await _press("TabletNav_evidence")
 	t.check(_find("GoToBook_" + book) != null, "a book you asked for is not listed with its place")
 	await _layout("tablet, evidence")
@@ -143,6 +185,14 @@ func run(t_, tree_: SceneTree) -> void:
 	await _press("TabletNav_timeline")
 	t.check(_find("TimelineChart") != null, "timeline chart missing")
 	await _layout("tablet, timeline")
+	var timed := ""
+	for e in engine.timeline()["entries"]:
+		if engine.status_of(String(e["id"])) == "":
+			timed = String(e["id"])
+			break
+	if timed != "":
+		await _press("Status_%s_active" % timed)
+		t.eq(engine.status_of(timed), "active", "marking from the timeline did not work")
 	var credits := int(engine.state["credits"])
 	await _press("TabletNav_hints")
 	scr.tablet.buy_hint()   # the confirmation dialog is bypassed by calling the action it confirms
@@ -207,6 +257,10 @@ func run(t_, tree_: SceneTree) -> void:
 	t.check(scr.tablet.visible and scr.tablet.page == "evidence", "the open tablet page was not restored")
 	t.check(main.engine.state["ui"]["dialogue"].get(target, []).size() >= 2, "conversation lost on resume")
 	t.check(scr.town.whereabouts(target) == target_place, "people you have seen were forgotten")
+	t.eq(main.engine.status_of(said), "suspicious", "statuses lost on resume")
+	t.eq(main.engine.status_of(other), "ignored", "ignored entries lost on resume")
+	t.check(main.engine.state["checks"].has(said), "the check was lost on resume")
+	t.eq(main.engine.mode(), "hobby", "mode lost on resume")
 
 	# --- solve
 	await _press("TabletNav_theory")

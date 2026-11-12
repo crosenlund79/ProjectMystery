@@ -7,6 +7,7 @@ const CaseLibrary = preload("res://scripts/core/case_library.gd")
 const Investigation = preload("res://scripts/core/investigation.gd")
 const Verdict = preload("res://scripts/core/verdict.gd")
 const Town = preload("res://scripts/core/town.gd")
+const CaseFormat = preload("res://scripts/core/case_format.gd")
 
 
 static func run(out_path: String) -> int:
@@ -36,6 +37,15 @@ static func run(out_path: String) -> int:
 				town.read(b)
 			for vid in town.vehicles_at(p["id"]):
 				town.examine(vid)
+		var opened := 0
+		for rid in inv.data["testimony"]:
+			for it in inv.data["testimony"][rid]["items"]:
+				if CaseFormat.REL_VALUES.has(CaseFormat.open_relevance(loaded["package"], it["key"])):
+					opened += 1
+		if opened == 0:
+			ok = false
+			lines.append("FAIL %s: no evidence check opens" % e["case_id"])
+			continue
 		if met == 0:
 			ok = false
 			lines.append("FAIL %s: nobody could be found in town" % e["case_id"])

@@ -56,6 +56,8 @@ class Simulation:
         self.forced: dict[str, decisions.Plan] = {}
         self.moves: dict[str, dict] = {}
         self.pressure: dict[str, float] = {rid: 0.0 for rid in self.ids}
+        # money provenance: cash taken from a hidden stash, per wallet, as [withdrawal event, crowns left]
+        self.tainted: dict[str, list[list]] = {}
         self.recent_drinks: dict[str, list[tuple[int, str]]] = {rid: [] for rid in self.ids}
         self.daily = Counter()
         self.found_bodies: list[str] = []
@@ -190,6 +192,33 @@ class Simulation:
         if dst_have is not None:
             self._set(dst, asset, dst_have + amount)
         self.world.transfers.append(Transfer(self.t if time is None else time, event_id, asset, src, dst, amount))
+        self._trace_money(asset, src, dst, amount, event_id)
+
+    def _trace_money(self, asset: str, src: str, dst: str, amount: int, event_id: str) -> None:
+        """Money provenance. Cash taken out of a hidden stash keeps its origin until it is spent, and the
+        event that spends it is causally linked to the withdrawal (and through it to the theft). Pure
+        bookkeeping: it only adds causal links to the record and never changes what anyone does."""
+        if asset != "cash":
+            return
+        if src.startswith("box:stash:") and dst.startswith("wallet:"):
+            self.tainted.setdefault(dst.partition(":")[2], []).append([event_id, amount])
+            return
+        if not src.startswith("wallet:"):
+            return
+        lots = self.tainted.get(src.partition(":")[2])
+        if not lots:
+            return
+        ev = self.log.by_id.get(event_id)
+        left = amount
+        while lots and left > 0:
+            lot = lots[0]
+            if ev is not None and lot[0] != ev.id and lot[0] not in ev.causes:
+                ev.causes.append(lot[0])
+            used = min(left, lot[1])
+            lot[1] -= used
+            left -= used
+            if lot[1] <= 0:
+                lots.pop(0)
 
     # ------------------------------------------------------------------- events
     def emit(self, kind: str, location: str, actors, targets=(), objects=(), data=None, causes=(),

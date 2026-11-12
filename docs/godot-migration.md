@@ -111,6 +111,12 @@ windows. Hovering or tabbing to a building outlines it in gold. Cases that start
 dusk colours. High contrast mode uses white outlines on black. The buildings are still ordinary buttons, so
 clicking, keyboard focus and tooltips are unchanged.
 
+**Evidence management.** Every notebook entry has one-click Suspicious / Active / Ignore markers, on the
+notebook, evidence and timeline pages. The notebook filters by status and has a Review ignored view. In Hobby
+Detective mode, a suspicious statement, trace or record line can be checked against its sealed relevance
+verdict, with three strikes for wrong calls. Relevance comes from the simulation's causal record; see
+investigation-rules.md.
+
 The town's rules live in `scripts/core/town.gd`, with no UI code, and are tested on every bundled case
 (`tests/test_town.gd`). The tablet and the map only call them.
 

@@ -105,6 +105,32 @@ that edited or damaged files are detected. In the game, only `godot/scripts/core
 only after the player has submitted a theory or given up. A counter (`Verdict.unseal_count`) lets the tests
 prove this.
 
+## `relevance` (optional, per-item seals)
+
+```json
+{"scheme": "sha256-xor-item/1", "items": {"K0001": "<base64>", "T-EV0007": "<base64>", "R-L0042": "<base64>"}}
+```
+
+There is one entry per statement key, trace id and record line id. Each value is
+`"<verdict>|<reason>"`, space-padded to 24 bytes and XORed with the first 24 bytes of
+`SHA-256("project-mystery relevance v1|<case_id>|<item id>")`, then base64-encoded. Every value has the same
+length, so a verdict's length does not give it away. Hobby Detective checks open exactly one item at a time and
+never the truth.
+
+The values come from `mystery/cases/relevance.py`:
+
+| Value | Meaning |
+|---|---|
+| `connected|web` | It stems from an event in the incident's causal web. |
+| `unrelated|outside` | It stems from an event outside the web, or it is where-and-when information that touches no part of it. |
+| `uncertain|where_when` | It is where-and-when information that puts someone where and when part of the incident happened. |
+| `uncertain|untraced` | It is hearsay that cannot be traced back to anything anyone perceived. |
+
+The same verdicts, with their source events, are in the sealed truth as `relevance`, together with
+`relevance_web` (the event ids) and `relevance_footprint` (`[place, minute]` pairs). The relevance block is
+optional: packages without it stay readable, and the game then offers no checks. Validators reject a block
+whose items do not open to one of the four values.
+
 ## Library index (`godot/cases/index.json`)
 
 ```json

@@ -7446,6 +7446,11 @@
         "time": 33603
        },
        {
+        "label": "Day 24 08:49",
+        "summary": "Nora repays 20 to Agnes.",
+        "time": 33649
+       },
+       {
         "label": "Day 24 09:02",
         "summary": "Nora walks from the grocery to the Holm house.",
         "time": 33662
@@ -14873,6 +14878,11 @@
         "label": "Day 24 08:03",
         "summary": "Nora walks from the Holm house to the grocery.",
         "time": 33603
+       },
+       {
+        "label": "Day 24 08:49",
+        "summary": "Nora repays 20 to Agnes.",
+        "time": 33649
        },
        {
         "label": "Day 24 09:02",
@@ -22315,6 +22325,11 @@
         "label": "Day 24 08:03",
         "summary": "Nora walks from the Holm house to the grocery.",
         "time": 33603
+       },
+       {
+        "label": "Day 24 08:49",
+        "summary": "Nora repays 20 to Agnes.",
+        "time": 33649
        },
        {
         "label": "Day 24 09:02",

@@ -117,6 +117,30 @@ static func _collect_keys(obj, out: Dictionary) -> void:
 			_collect_keys(v, out)
 
 
+## Per-item relevance seals (mirrors seal_item in mystery/cases/package.py): Hobby Detective checks
+## open exactly one item's verdict, never the truth.
+const REL_SCHEME := "sha256-xor-item/1"
+const REL_SALT := "project-mystery relevance v1"
+const REL_VALUES := ["connected|web", "unrelated|outside", "uncertain|where_when", "uncertain|untraced"]
+
+
+static func open_relevance(pkg: Dictionary, ref: String) -> String:
+	## "<verdict>|<reason>" for one item, or "" if the package has no verdict for it.
+	var rel = pkg.get("relevance")
+	if typeof(rel) != TYPE_DICTIONARY or rel.get("scheme") != REL_SCHEME:
+		return ""
+	var items = rel.get("items")
+	if typeof(items) != TYPE_DICTIONARY or not items.has(ref):
+		return ""
+	var cipher := Marshalls.base64_to_raw(String(items[ref]))
+	var key := ("%s|%s|%s" % [REL_SALT, String(pkg.get("case_id", "")), ref]).sha256_buffer()
+	var out := PackedByteArray()
+	out.resize(cipher.size())
+	for i in range(mini(cipher.size(), key.size())):
+		out[i] = cipher[i] ^ key[i]
+	return out.get_string_from_ascii().strip_edges()
+
+
 static func validate(pkg) -> Array:
 	## Every rule mirrors validate_package() in mystery/cases/package.py.
 	var p := []
@@ -143,6 +167,16 @@ static func validate(pkg) -> Array:
 		_need(sealed, "length", "int", "sealed_truth", p)
 		if typeof(sealed.get("data")) == TYPE_STRING and String(sealed["data"]).sha256_text() != sealed.get("data_sha256"):
 			p.append("sealed_truth: data checksum mismatch (corrupted or edited)")
+	var rel = pkg.get("relevance")
+	if rel != null:
+		# optional: per-item sealed verdicts for Hobby Detective checks
+		if typeof(rel) != TYPE_DICTIONARY or rel.get("scheme") != REL_SCHEME or typeof(rel.get("items")) != TYPE_DICTIONARY:
+			p.append("relevance: unknown scheme or malformed")
+		elif typeof(case_id) == TYPE_STRING:
+			for ref in rel["items"]:
+				if not REL_VALUES.has(open_relevance(pkg, String(ref))):
+					p.append("relevance: item %s does not open" % ref)
+					break
 	var inv = _need(pkg, "investigation", "dict", "package", p)
 	if inv == null:
 		return p

@@ -9,6 +9,7 @@ extends Control
 const Kit = preload("res://scripts/ui/kit.gd")
 const Clock = preload("res://scripts/core/clock.gd")
 const TimelineChart = preload("res://scripts/ui/timeline_chart.gd")
+const Investigation = preload("res://scripts/core/investigation.gd")
 
 const PAGES := [
 	["case", "Case notes", "What happened, when and where, and how far you have got"],
@@ -24,6 +25,26 @@ const MARKS := [["No mark", ""], ["Confirmed", "confirmed"], ["Disputed", "dispu
 		["My inference", "inference"]]
 const FILTERS := [["All", ""], ["Statements", "statement"], ["Evidence", "trace"], ["Records", "record"],
 		["Observations", "observation"], ["My notes", "note"]]
+## Evidence management: one-click status markers on every notebook entry.
+const STATUS_BUTTONS := [["suspicious", "Suspicious", "Mark as suspicious - something here doesn't sit right"],
+		["active", "Active", "Keep this in play - you are working on it"],
+		["ignored", "Ignore", "Set it aside. It stays in your notebook under Review ignored, never deleted."]]
+const STATUS_FILTERS := [["all", "Everything", "Everything except what you ignored"],
+		["suspicious", "Suspicious", "Only what you marked suspicious"], ["active", "Active", "Only what you marked active"],
+		["unmarked", "Unmarked", "What you have not marked yet"],
+		["ignored", "Review ignored", "Everything you set aside, to reconsider"]]
+const STATUS_CARDS := {"suspicious": "CardSuspicious", "active": "CardActive", "ignored": "CardIgnored"}
+const VERDICT_TEXT := {
+	"connected": ["✓ Connected to the incident", "GoodLabel"],
+	"unrelated": ["✗ Not connected to the incident", "DangerLabel"],
+	"uncertain": ["? Can't be settled by checking", "InfoLabel"],
+}
+const REASON_TEXT := {
+	"web": "Checked against the record of what happened: this is part of the story. It doesn't say how, who did it, or whether anyone told the truth.",
+	"outside": "Checked against the record of what happened: this has nothing to do with it.",
+	"where_when": "It places someone where and when something to do with the incident happened. Whether that matters depends on who it was and whether it is true - that is for you to work out.",
+	"untraced": "It can't be traced back to anything anyone actually saw or did, so there is nothing to check it against.",
+}
 const SOURCE_NAMES := {"statement": "statement", "trace": "evidence", "record": "record", "observation": "observation",
 		"note": "your note"}
 
@@ -35,6 +56,9 @@ var page := "case"
 var content: VBoxContainer
 var nav := {}
 var notebook_filter := ""
+var status_filter := "all"
+var show_ignored := false
+var mode_label: Label
 var timeline_person := ""
 var timeline_selected := ""
 var person := ""
@@ -78,6 +102,11 @@ func _ready() -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	bh.add_child(title)
+	mode_label = Kit.label("", "SmallLabel", false)
+	mode_label.name = "ModeLabel"
+	mode_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	bh.add_child(mode_label)
+	_refresh_mode_label()
 	bh.add_child(Kit.label("Saved automatically", "SmallLabel", false))
 	var close_b := Kit.button("Back to town  (T)", "Put the tablet away", "PrimaryButton", "CloseTablet")
 	close_b.pressed.connect(Callable(screen, "close_tablet"))
@@ -196,14 +225,22 @@ func _page_case() -> void:
 		if r["condition"] != "deceased":
 			alive += 1
 	var tl: Dictionary = engine.timeline()
-	var progress := "You are at %s.\nPlaces visited: %d of %d\nPeople questioned: %d of %d\nNotebook entries: %d\nConflicting accounts spotted: %d" % [
+	var counts := _status_counts()
+	var progress := "You are at %s.\nPlaces visited: %d of %d\nPeople questioned: %d of %d\nNotebook entries: %d (suspicious %d, active %d, ignored %d)\nConflicting accounts spotted: %d" % [
 			engine.place_name(town.at()), engine.state["ui"]["visited"].size(), town.places().size(),
-			engine.state["goodwill"].size(), alive, engine.state["entries"].size(), tl["conflicts"].size()]
+			engine.state["goodwill"].size(), alive, engine.state["entries"].size(), counts["suspicious"], counts["active"],
+			counts["ignored"], tl["conflicts"].size()]
+	if engine.mode() == "hobby":
+		progress += "\nHobby Detective: %d of %d checks left" % [engine.strikes_left(), Investigation.MAX_STRIKES]
+	else:
+		progress += "\nNormal Detective"
 	list.add_child(_info_card("Your progress", progress))
 	list.add_child(_info_card("How to investigate",
 			"Walk around town: click a building on the map to go there. You meet whoever is there, and the people you have seen stay marked on the map. Click one of them to go back and talk.\n\n"
 			+ "Testimony tells you what someone believes. People misremember, repeat rumours and protect those they love, and whoever is responsible may lie.\n\n"
 			+ "Look around each place. Record books are kept where they belong: the ledger at the shop, the bar tabs at the pub, the patient log at the clinic. Private places and their books need the owner's agreement, and a refusal can tell you something too.\n\n"
+			+ "Sort what you learn as you go: mark it Suspicious, Active, or Ignore it (ignored things are never deleted - Review ignored brings them back)."
+			+ (" As a Hobby Detective you can check anything you marked suspicious: you learn whether it is connected to the incident, never who did it or whether anyone lied. Three wrong calls and the checks are gone; right ones are free.\n\n" if engine.mode() == "hobby" else "\n\n")
 			+ "Everything you learn lands in this tablet. The timeline lines up who was where and flags accounts that cannot both be true. When you are ready, open 'Solve the case'. 'Cannot be determined' is an honest answer when the evidence is thin."))
 	content.add_child(Kit.scroll(list))
 
@@ -250,17 +287,66 @@ func _page_notebook() -> void:
 		b.pressed.connect(_set_filter.bind(f[1]))
 		filters.add_child(b)
 	content.add_child(filters)
+	var counts := _status_counts()
+	var sf := Kit.flow()
+	for f in STATUS_FILTERS:
+		var label: String = f[1] if f[0] == "all" else "%s (%d)" % [f[1], counts.get(f[0], 0)]
+		var b := Kit.button(label, f[2], "NavButtonActive" if f[0] == status_filter else "NavButton", "StatusFilter_" + f[0])
+		b.pressed.connect(_set_status_filter.bind(f[0]))
+		sf.add_child(b)
+	content.add_child(sf)
+	if status_filter == "ignored":
+		var note := Kit.panel("Paper")
+		note.name = "IgnoredNotice"
+		note.add_child(Kit.label("What you set aside. Nothing here has been deleted: restore anything that deserves another look.",
+				"MutedLabel"))
+		content.add_child(note)
 	var conflicts := _conflict_map()
 	var list := Kit.vbox(8)
+	list.name = "EntryList"
 	var shown := 0
 	for e in engine.state["entries"]:
-		if notebook_filter != "" and e["source"] != notebook_filter:
+		if not _shows(e):
 			continue
 		list.add_child(_entry_card(e, conflicts.get(e["id"], [])))
 		shown += 1
 	if shown == 0:
-		list.add_child(Kit.label("Nothing here yet. Talk to people, look around and read the records.", "MutedLabel"))
+		list.add_child(Kit.label("Nothing here." if not engine.state["entries"].is_empty() else
+				"Nothing here yet. Talk to people, look around and read the records.", "MutedLabel"))
 	content.add_child(Kit.scroll(list))
+
+
+func _status_counts() -> Dictionary:
+	var out := {"suspicious": 0, "active": 0, "ignored": 0, "unmarked": 0}
+	for e in engine.state["entries"]:
+		var st: String = engine.status_of(String(e["id"]))
+		out[st if st != "" else "unmarked"] += 1
+	return out
+
+
+func _shows(e: Dictionary) -> bool:
+	## Does the notebook's current source and status filter show this entry?
+	if notebook_filter != "" and e["source"] != notebook_filter:
+		return false
+	var st: String = engine.status_of(String(e["id"]))
+	match status_filter:
+		"all":
+			return st != "ignored"
+		"unmarked":
+			return st == ""
+		_:
+			return st == status_filter
+
+
+func _set_status_filter(f: String) -> void:
+	status_filter = f
+	show_page("notebook")
+
+
+func review_ignored() -> void:
+	notebook_filter = ""
+	status_filter = "ignored"
+	show_page("notebook")
 
 
 func _spin(name_: String, lo: int, hi: int, value: int, tip: String) -> SpinBox:
@@ -297,7 +383,9 @@ func _set_filter(f: String) -> void:
 
 
 func _entry_card(e: Dictionary, conflicts: Array) -> Control:
-	var card := Kit.panel("Paper" if e["source"] == "note" else "Card")
+	var eid := String(e["id"])
+	var card := Kit.panel(STATUS_CARDS.get(engine.status_of(eid), "Paper" if e["source"] == "note" else "Card"))
+	card.name = "Entry_" + eid
 	var v := Kit.vbox(4)
 	var head := Kit.hbox(10)
 	head.add_child(Kit.label("[%s]" % e["id"], "AccentLabel", false))
@@ -318,8 +406,112 @@ func _entry_card(e: Dictionary, conflicts: Array) -> Control:
 	if not conflicts.is_empty():
 		v.add_child(Kit.label("⚠ Conflicts with " + ", ".join(PackedStringArray(conflicts))
 				+ " — they cannot all be true.", "DangerLabel"))
+	v.add_child(_status_row(eid))
 	card.add_child(v)
 	return card
+
+
+func _status_row(eid: String) -> Control:
+	## One click marks an entry suspicious, active or ignored; clicking the lit one clears it.
+	## Hobby Detective can check what they marked suspicious.
+	var row := Kit.flow()
+	var st: String = engine.status_of(eid)
+	for s_ in STATUS_BUTTONS:
+		var b := Kit.button(s_[1], s_[2], "NavButtonActive" if st == s_[0] else "TopicButton", "Status_%s_%s" % [eid, s_[0]])
+		b.pressed.connect(set_status.bind(eid, "" if st == s_[0] else s_[0]))
+		row.add_child(b)
+	if st == "ignored":
+		var r := Kit.button("Restore", "Bring it back into play", "PrimaryButton", "Restore_" + eid)
+		r.pressed.connect(set_status.bind(eid, ""))
+		row.add_child(r)
+	if engine.mode() == "hobby" and engine.checkable(eid):
+		var done = engine.state["checks"].get(eid)
+		if done != null:
+			row.add_child(verdict_label(eid, String(done["verdict"]), String(done["reason"])))
+		elif st == "suspicious":
+			var c := Kit.button("Check it", "Is this connected to the incident? A wrong call costs one of your three strikes; a right one is free.",
+					"PrimaryButton", "Check_" + eid)
+			c.disabled = engine.strikes_left() == 0
+			if c.disabled:
+				c.tooltip_text = "No checks left: three of your calls were wrong."
+			c.pressed.connect(check.bind(eid))
+			row.add_child(c)
+	return row
+
+
+func verdict_label(eid: String, verdict: String, reason: String) -> Label:
+	var vt: Array = VERDICT_TEXT.get(verdict, ["?", "SmallLabel"])
+	var l := Kit.label(vt[0], vt[1], false)
+	l.name = "Verdict_" + eid
+	l.tooltip_text = String(REASON_TEXT.get(reason, ""))
+	l.mouse_filter = Control.MOUSE_FILTER_STOP
+	return l
+
+
+func set_status(eid: String, status: String) -> void:
+	if not engine.set_status(eid, status):
+		return
+	app.persist()
+	_after_status(eid)
+
+
+func _after_status(eid: String) -> void:
+	## Update just this entry where it is shown, so the list keeps its scroll position.
+	if page == "timeline":
+		show_page("timeline")
+		return
+	var old = content.find_child("Entry_" + eid, true, false)
+	if old == null or (page == "notebook" and not _shows(engine.entry(eid))) \
+			or (page == "evidence" and engine.status_of(eid) == "ignored"):
+		show_page(page)
+		return
+	var parent: Node = old.get_parent()
+	var idx: int = old.get_index()
+	parent.remove_child(old)
+	old.queue_free()
+	var fresh := _entry_card(engine.entry(eid), _conflict_map().get(eid, []))
+	parent.add_child(fresh)
+	parent.move_child(fresh, idx)
+	_refresh_filter_counts()
+
+
+func _refresh_filter_counts() -> void:
+	var counts := _status_counts()
+	for f in STATUS_FILTERS:
+		var b = content.find_child("StatusFilter_" + f[0], true, false)
+		if b != null and f[0] != "all":
+			b.text = "%s (%d)" % [f[1], counts.get(f[0], 0)]
+
+
+func check(eid: String) -> Dictionary:
+	## Hobby Detective: ask whether a suspicious item is connected to the incident.
+	var res: Dictionary = engine.check(eid)
+	app.persist()
+	if res.has("error"):
+		app.message("Can't check that", String(res["error"]))
+		return res
+	_refresh_mode_label()
+	var vt: Array = VERDICT_TEXT.get(String(res["verdict"]), ["?", ""])
+	var body := String(REASON_TEXT.get(String(res["reason"]), ""))
+	if res["strike"]:
+		body += "\n\nThat was a wrong call: strike %d of %d." % [int(res["strikes"]), Investigation.MAX_STRIKES]
+		if int(res["left"]) == 0:
+			body += " You have no checks left - from here on you judge alone."
+	app.message(String(vt[0]).substr(2), body)
+	_after_status(eid)
+	return res
+
+
+func _refresh_mode_label() -> void:
+	if mode_label == null:
+		return
+	if engine.mode() == "hobby":
+		mode_label.text = "Hobby Detective  ·  %d of %d checks left" % [engine.strikes_left(), Investigation.MAX_STRIKES] \
+				if engine.strikes_left() > 0 else "Hobby Detective  ·  no checks left"
+		mode_label.tooltip_text = "Check anything you marked suspicious: is it connected to the incident? Three wrong calls and the checks are gone; right ones are free."
+	else:
+		mode_label.text = "Normal Detective"
+		mode_label.tooltip_text = "You judge everything yourself. (Hobby Detective, chosen when starting a case, can check suspicious items.)"
 
 
 func _set_mark(index: int, eid: String) -> void:
@@ -338,11 +530,16 @@ func _page_evidence() -> void:
 	var groups := [["trace", "Found in town"], ["record", "Copied from record books"],
 			["observation", "Refusals and other observations"]]
 	var any := false
+	var hidden := 0
 	for g in groups:
 		var cards := []
 		for e in engine.state["entries"]:
-			if e["source"] == g[0]:
-				cards.append(_entry_card(e, conflicts.get(e["id"], [])))
+			if e["source"] != g[0]:
+				continue
+			if engine.status_of(String(e["id"])) == "ignored":
+				hidden += 1
+				continue
+			cards.append(_entry_card(e, conflicts.get(e["id"], [])))
 		if cards.is_empty():
 			continue
 		any = true
@@ -365,7 +562,14 @@ func _page_evidence() -> void:
 			go.pressed.connect(Callable(screen, "route_to_book").bind(k))
 			row.add_child(go)
 			list.add_child(row)
-	if not any:
+	if hidden > 0:
+		var row2 := Kit.flow()
+		row2.add_child(Kit.label("%d item(s) you ignored are not shown." % hidden, "SmallLabel", false))
+		var rv := Kit.button("Review ignored", "Reconsider what you set aside", "TopicButton", "GoToIgnored")
+		rv.pressed.connect(review_ignored)
+		row2.add_child(rv)
+		list.add_child(row2)
+	if not any and hidden == 0:
 		list.add_child(Kit.label("Nothing yet. Look around the places in town, examine the vehicles, and ask to read the record books where they are kept.",
 				"MutedLabel"))
 	content.add_child(Kit.scroll(list))
@@ -464,7 +668,25 @@ func _page_timeline() -> void:
 	row.add_child(opt)
 	row.add_child(Kit.label("%d conflicting account(s) found" % tl["conflicts"].size(),
 			"DangerLabel" if not tl["conflicts"].is_empty() else "SmallLabel", false))
+	var ignored := 0
+	for e in tl["entries"]:
+		if engine.status_of(String(e["id"])) == "ignored":
+			ignored += 1
+	if ignored > 0:
+		var si := CheckBox.new()
+		si.name = "ShowIgnored"
+		si.text = "Show ignored (%d)" % ignored
+		si.button_pressed = show_ignored
+		si.toggled.connect(_toggle_show_ignored)
+		row.add_child(si)
 	content.add_child(row)
+	if not show_ignored and ignored > 0:
+		tl = tl.duplicate()
+		var kept := []
+		for f in tl["facts"]:
+			if engine.status_of(String(f["entry"])) != "ignored":
+				kept.append(f)
+		tl["facts"] = kept
 	var chart = TimelineChart.new()
 	chart.name = "TimelineChart"
 	chart.high_contrast = bool(app.settings.get("high_contrast", false))
@@ -485,7 +707,10 @@ func _page_timeline() -> void:
 	for e in tl["entries"]:
 		if timeline_person != "" and not about_person.has(e["id"]):
 			continue
+		if not show_ignored and engine.status_of(String(e["id"])) == "ignored":
+			continue
 		var line := Kit.hbox(10)
+		line.name = "Entry_" + String(e["id"])
 		var stamp := Kit.label(("≈ " if e["id"].begins_with("S") else "") + e["label"], "AccentLabel", false)
 		stamp.custom_minimum_size = Vector2(150, 0)
 		stamp.tooltip_text = "Witness times are approximate." if e["id"].begins_with("S") else ""
@@ -495,12 +720,19 @@ func _page_timeline() -> void:
 		body.add_child(Kit.label("[%s] %s" % [e["id"], e["text"]] + ("  (%s)" % e["mark"] if e["mark"] != null else "")))
 		if not e["conflicts"].is_empty():
 			body.add_child(Kit.label("⚠ Conflicts with " + ", ".join(PackedStringArray(e["conflicts"])), "DangerLabel"))
+		body.add_child(_status_row(String(e["id"])))
+		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.add_child(body)
 		list.add_child(line)
 	if tl["entries"].is_empty():
 		list.add_child(Kit.label("Nothing with a time on it yet. Ask people where they were and what they saw.",
 				"MutedLabel"))
 	content.add_child(Kit.scroll(list))
+
+
+func _toggle_show_ignored(on: bool) -> void:
+	show_ignored = on
+	show_page("timeline")
 
 
 func _pick_timeline_person(index: int, ids: Array) -> void:

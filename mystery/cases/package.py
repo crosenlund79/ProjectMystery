@@ -73,6 +73,36 @@ def unseal(sealed: dict, case_id: str) -> dict:
     return json.loads(plain.decode("ascii"))
 
 
+# ----------------------------------------------------------------------------- per-item relevance seals
+# Hobby Detective checks open one item's verdict at a time, without opening the truth. Each verdict is
+# sealed on its own: "<verdict>|<reason>" padded to a fixed length, XORed with SHA-256 of the case id
+# and the item's id. Same spirit as the truth seal: a spoiler guard, not security.
+REL_SCHEME = "sha256-xor-item/1"
+REL_SALT = "project-mystery relevance v1"
+REL_WIDTH = 24
+REL_VALUES = ("connected|web", "unrelated|outside", "uncertain|where_when", "uncertain|untraced")
+
+
+def _item_key(case_id: str, ref: str) -> bytes:
+    return hashlib.sha256(f"{REL_SALT}|{case_id}|{ref}".encode("utf-8")).digest()[:REL_WIDTH]
+
+
+def seal_item(value: str, case_id: str, ref: str) -> str:
+    plain = value.ljust(REL_WIDTH).encode("ascii")
+    return base64.b64encode(bytes(a ^ b for a, b in zip(plain, _item_key(case_id, ref)))).decode("ascii")
+
+
+def unseal_item(data: str, case_id: str, ref: str) -> str:
+    cipher = base64.b64decode(data)
+    return bytes(a ^ b for a, b in zip(cipher, _item_key(case_id, ref))).decode("ascii", "replace").rstrip()
+
+
+def seal_relevance(relevance: dict, case_id: str) -> dict:
+    return {"scheme": REL_SCHEME,
+            "items": {ref: seal_item(f"{v['verdict']}|{v['reason']}", case_id, ref)
+                      for ref, v in sorted(relevance.items())}}
+
+
 # ----------------------------------------------------------------------------- build
 def build_package(case: dict) -> dict:
     inv, truth = case["investigation"], case["truth"]
@@ -93,6 +123,7 @@ def build_package(case: dict) -> dict:
         },
         "investigation": inv,
         "sealed_truth": seal(truth, inv["case_id"]),
+        "relevance": seal_relevance(truth.get("relevance", {}), inv["case_id"]),
     }
 
 
@@ -167,6 +198,20 @@ def validate_package(pkg) -> list[str]:
         if isinstance(sealed.get("data"), str) and \
                 hashlib.sha256(sealed["data"].encode("ascii")).hexdigest() != sealed.get("data_sha256"):
             p.append("sealed_truth: data checksum mismatch (corrupted or edited)")
+    rel = pkg.get("relevance")
+    if rel is not None:
+        # optional: per-item sealed verdicts for Hobby Detective checks
+        if not isinstance(rel, dict) or rel.get("scheme") != REL_SCHEME or not isinstance(rel.get("items"), dict):
+            p.append("relevance: unknown scheme or malformed")
+        elif isinstance(case_id, str):
+            for ref, data in rel["items"].items():
+                try:
+                    ok = unseal_item(data, case_id, ref) in REL_VALUES
+                except (ValueError, TypeError):
+                    ok = False
+                if not ok:
+                    p.append(f"relevance: item {ref!r} does not open")
+                    break
     inv = need(pkg, "investigation", "dict", "package")
     if inv is None:
         return p

@@ -15,6 +15,10 @@ const Smoke = preload("res://scripts/core/smoke.gd")
 const InvestigationScreen = preload("res://scripts/ui/investigation_screen.gd")
 const RevealScreen = preload("res://scripts/ui/reveal_screen.gd")
 
+const MODE_HELP := {
+	"normal": "Normal Detective: mark what you find suspicious, active or worth ignoring, and judge it all yourself.",
+	"hobby": "Hobby Detective: you may also check anything you have marked suspicious. Each check says whether it is connected to the incident - never who did it or whether anyone lied. Three wrong calls and the checks are gone; right ones are free.",
+}
 const DIFFICULTY_HELP := {
 	"gentle": "Several people saw or heard something useful.",
 	"standard": "A fair puzzle: the evidence is there if you look.",
@@ -183,10 +187,19 @@ func show_new_case(filter := "all") -> void:
 	var opt := Kit.option(filters, keys.find(filter), "Show only cases of one difficulty")
 	opt.name = "DifficultyFilter"
 	opt.item_selected.connect(func(i): show_new_case(keys[i]))
-	var row := Kit.hbox()
+	var row := Kit.flow()
 	row.add_child(Kit.label("Show:", "", false))
 	row.add_child(opt)
+	row.add_child(Kit.spacer(0))
+	row.add_child(Kit.label("Detective mode:", "", false))
+	var mode_opt := Kit.option([["Normal Detective", 0], ["Hobby Detective", 1]],
+			1 if settings.get("mode", "normal") == "hobby" else 0,
+			"Hobby Detective can check whether something they find suspicious is connected to the case (three wrong calls and the checks are gone). Normal Detective works it all out alone.")
+	mode_opt.name = "ModeOption"
+	mode_opt.item_selected.connect(_pick_mode)
+	row.add_child(mode_opt)
 	root.add_child(row)
+	root.add_child(Kit.label(MODE_HELP[String(settings.get("mode", "normal"))], "SmallLabel"))
 	var list := Kit.vbox(12)
 	for e in library.entries:
 		if filter != "all" and e["difficulty"] != filter:
@@ -339,6 +352,11 @@ func change_setting(key: String, value) -> void:
 
 
 # =========================================================================== cases
+func _pick_mode(index: int) -> void:
+	change_setting("mode", "hobby" if index == 1 else "normal")
+	show_new_case()
+
+
 func open_case(entry: Dictionary, fresh: bool) -> bool:
 	if entry.is_empty():
 		return false
@@ -350,9 +368,11 @@ func open_case(entry: Dictionary, fresh: bool) -> bool:
 		saves.delete_save(entry["case_id"])
 	var state = null if fresh else saves.load_state(entry["case_id"])
 	engine = Investigation.new(loaded["package"], state)
+	if not engine.resumed:
+		engine.state["mode"] = String(settings.get("mode", "normal"))  # fixed for the whole case
 	persist()
 	if engine.save_mismatch:
-		message("This case has changed", "This case was updated since you last played it (this version of Project Mystery adds the town: you now walk to places and find people where they are). Your earlier notes belong to the old version of the case and can't be carried over, so the investigation starts afresh.")
+		message("This case has changed", "This case was updated since you last played it: a newer version of Project Mystery regenerated it from its simulation. Your earlier notes belong to the old version of the case and can't be carried over, so the investigation starts afresh.")
 	if engine.state["revealed"]:
 		var res: Dictionary = engine.reveal()
 		show_reveal(res["model"])

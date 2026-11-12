@@ -72,6 +72,47 @@ has no town, so this part has no parity fixtures. It changes where you can act, 
   * `look_around` inspects the place you are at.
   Otherwise each call delegates to the rules above unchanged, with the same results and the same notebook.
 
+## Evidence management and Hobby Detective (Godot only)
+
+* **Statuses:** `set_status(entry, status)` marks any notebook entry `suspicious`, `active` or `ignored`, and
+  `""` clears it.
+  * Statuses are saved with the case.
+  * Ignoring only hides an entry from the default views (Review ignored shows it). Nothing is ever deleted.
+* **Mode:** each case is played as Normal Detective or Hobby Detective. The mode is chosen on the New Case
+  screen, fixed when the case starts, and saved with it.
+* **`check(entry)`, Hobby Detective only:**
+  * Only statements, traces and record lines can be checked, and only once marked suspicious.
+  * A check opens that one item's sealed verdict from the package (see case-format.md), never the truth.
+  * `unrelated` is a wrong call and costs a strike. `connected` and `uncertain` cost nothing.
+  * Asking about the same item again repeats the answer for free.
+  * After three strikes, no new checks.
+* **Results:** a result carries only the verdict, a reason (`web`, `outside`, `where_when`, `untraced`) and
+  the strike count. It never says who did it, whether anything is true, or what the answer is.
+
+### How relevance is decided (`mystery/cases/relevance.py`)
+
+* **The incident's causal web:**
+  * the reveal's chain: the act, the events recorded as its causes (the pressures behind it), the related
+    events, the consequences, and the discovery;
+  * the responsible person's trip to the scene and away from it.
+
+  Money provenance in the simulation links spending stolen money to the theft. When cash taken from a hidden
+  stash is spent, the spending event records the withdrawal as a cause.
+* **Event information** is judged by the event it stems from: connected if that event is in the web,
+  unrelated if not. This covers debts, loans, refusals, payments, purchases, arguments, assaults, damage,
+  injuries, noises, suspicions, traces and record lines.
+  * Hearsay is traced back to the original perception, or to the fact the town always knew.
+  * A misremembered or misidentified sighting is judged by what was really perceived.
+  * A lie is judged by what it covers. For example, the deer story is about the vehicle's damage.
+* **Where-and-when information** (presence, sightings, drunkenness, people's own accounts of where they were)
+  is judged by place and time only. It is uncertain if it touches the web's footprint (the same place, within
+  45 minutes), and unrelated otherwise.
+
+The tests check two guarantees on every bundled case:
+* Verdicts never depend on whether a statement is true: statements about the same event always get the same
+  verdict, and a culprit's false account is judged like any other.
+* Where-and-when verdicts can be re-derived from the claimed place and time alone.
+
 ## Hints: `hint()`
 
 Hints are bought in order. The tiers are Nudge, Lead and Strong hint, and each has a cost in credits (the

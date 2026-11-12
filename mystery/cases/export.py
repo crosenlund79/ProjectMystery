@@ -19,6 +19,7 @@ import os
 from typing import TYPE_CHECKING
 
 from mystery import CASE_SCHEMA, CONFIG_VERSION, SIM_VERSION
+from mystery.cases import relevance
 from mystery.cases import suitability as suit
 from mystery.cases.testimony import describe_segments, drinks_before, render, segments
 from mystery.rng import stream
@@ -126,6 +127,9 @@ class _Builder:
         hints = suit.hints(self, report)
         investigation = self._investigation(consent, evidence, records, vehicles, hints)
         truth = self._truth(report, evidence, records)
+        truth["relevance"] = relevance.judge(self, evidence, records)
+        truth["relevance_web"] = relevance.web(self)
+        truth["relevance_footprint"] = [list(m) for m in relevance.footprint(self, truth["relevance_web"])]
         return {"case_id": self.case_id, "investigation": investigation, "truth": truth, "suitability": report}
 
     # ------------------------------------------------------------ testimony
@@ -179,7 +183,8 @@ class _Builder:
                          "I hit a deer out on the ridge road a few nights back. Gave me a fright.",
                          ["vehicles", f"person:{rid}"], "self", None, None, [rid], False,
                          {"belief": None, "status": "lie", "error": "invented a deer to explain the damage",
-                          "disclosure": "open", "withheld_reason": None, "supports": [], "event": None, "lie": True})
+                          "disclosure": "open", "withheld_reason": None, "supports": [], "event": None, "lie": True,
+                          "about_event": inc.core_event})
 
     def _root(self, b) -> str:
         """Who originally perceived this? Hearsay is only as independent as its source."""

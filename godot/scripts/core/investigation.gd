@@ -8,6 +8,7 @@ extends RefCounted
 
 const Clock = preload("res://scripts/core/clock.gd")
 const Verdict = preload("res://scripts/core/verdict.gd")
+const CaseFormat = preload("res://scripts/core/case_format.gd")
 
 const BASE_TOPICS := [
 	["whereabouts", "Where they were during the time in question"],
@@ -27,6 +28,12 @@ const NOTHING_MORE := "(Pressing them doesn't get you anything more.)"
 const MARKS := ["confirmed", "disputed", "uncertain", "inference"]
 const CONFLICT_MARGIN := 20
 const HINT_LABELS := {1: "Nudge", 2: "Lead", 3: "Strong hint"}
+## Evidence management: one status per notebook entry. Ignoring hides, never deletes.
+const STATUSES := ["suspicious", "active", "ignored"]
+## Detective modes. Hobby Detective may check what they marked suspicious; Normal Detective may not.
+const MODES := ["normal", "hobby"]
+const MAX_STRIKES := 3
+const CHECKABLE := ["statement", "trace", "record"]
 
 var package: Dictionary
 var data: Dictionary
@@ -97,6 +104,12 @@ func _normalize_state() -> void:
 			e["time"] = int(e["time"])
 	state["concluded"] = bool(state.get("concluded", false))
 	state["revealed"] = bool(state.get("revealed", false))
+	for k in ["status", "checks"]:
+		if typeof(state.get(k)) != TYPE_DICTIONARY:
+			state[k] = {}
+	if not MODES.has(String(state.get("mode", ""))):
+		state["mode"] = "normal"
+	state["strikes"] = int(state.get("strikes", 0))
 	if int(state.get("state_version", 1)) < 2:
 		# v1 kept the open page of the old page-based interface; places and records now live in town.
 		var old := String(state["ui"].get("page", "case"))
@@ -199,6 +212,68 @@ func clear_mark(eid: String) -> void:
 	var e := entry(eid)
 	if not e.is_empty():
 		e["mark"] = null
+
+
+# --------------------------------------------------------------------------- evidence management
+func status_of(eid: String) -> String:
+	return String(state["status"].get(eid, ""))
+
+
+func set_status(eid: String, status: String) -> bool:
+	## "suspicious", "active" or "ignored"; "" clears it. The entry itself is never touched.
+	if entry(eid).is_empty():
+		return false
+	if status == "":
+		state["status"].erase(eid)
+		return true
+	if not STATUSES.has(status):
+		return false
+	state["status"][eid] = status
+	return true
+
+
+func mode() -> String:
+	return String(state["mode"])
+
+
+func strikes_left() -> int:
+	return maxi(0, MAX_STRIKES - int(state["strikes"]))
+
+
+func checkable(eid: String) -> bool:
+	## Could this entry be checked at all (ignoring strikes and its status)?
+	var e := entry(eid)
+	return not e.is_empty() and CHECKABLE.has(String(e["source"])) and e["ref"] != null
+
+
+func check(eid: String) -> Dictionary:
+	## Hobby Detective: is this suspicious item connected to the incident? Opens only this item's
+	## sealed verdict (never the truth). Unrelated costs a strike; connected and uncertain are free;
+	## asking again about the same item gives the same answer for free.
+	if state["concluded"]:
+		return {"op": "check", "error": "closed"}
+	if mode() != "hobby":
+		return {"op": "check", "error": "Checks are part of Hobby Detective mode."}
+	if not checkable(eid):
+		return {"op": "check", "error": "Only statements, evidence and records can be checked."}
+	if state["checks"].has(eid):
+		var prev: Dictionary = state["checks"][eid]
+		return {"op": "check", "entry": eid, "verdict": prev["verdict"], "reason": prev["reason"], "strike": false,
+				"strikes": int(state["strikes"]), "left": strikes_left(), "repeat": true}
+	if status_of(eid) != "suspicious":
+		return {"op": "check", "error": "Mark it suspicious first."}
+	if strikes_left() == 0:
+		return {"op": "check", "error": "You have no checks left: three of your judgements were wrong."}
+	var opened: String = CaseFormat.open_relevance(package, String(entry(eid)["ref"]))
+	var parts := opened.split("|")
+	if parts.size() != 2 or not ["connected", "unrelated", "uncertain"].has(parts[0]):
+		return {"op": "check", "error": "This case file has nothing to check this against."}
+	var strike: bool = parts[0] == "unrelated"
+	if strike:
+		state["strikes"] = int(state["strikes"]) + 1
+	state["checks"][eid] = {"verdict": parts[0], "reason": parts[1]}
+	return {"op": "check", "entry": eid, "verdict": parts[0], "reason": parts[1], "strike": strike,
+			"strikes": int(state["strikes"]), "left": strikes_left(), "repeat": false}
 
 
 func note(text: String, time = null) -> String:

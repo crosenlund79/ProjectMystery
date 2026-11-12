@@ -39,7 +39,13 @@ People stay where the simulation left them, and the ones you have met are marked
 Press **T**, or the **Tablet** button, for your investigator's tablet: case notes, the notebook, evidence,
 everyone you have met and what they said, the timeline, which flags accounts that cannot both be true, hints,
 and **Solve the case**, where you submit your theory or give up and see the scored truth. The game saves after
-every action. **Continue** picks up where you left
+every action.
+
+Sort what you learn with one click: **Suspicious**, **Active** or **Ignore**. Ignored things are never deleted;
+**Review ignored** brings them back. Choose **Hobby Detective** on the New Case screen to be allowed to *check*
+anything you marked suspicious: the game tells you whether it is connected to the incident, never who did it
+or whether anyone lied. Three wrong calls and the checks are gone; right ones are free. **Normal Detective**
+judges everything alone. **Continue** picks up where you left
 off, **Load Case** opens other saved investigations or imports a `.mcase` file, and **Settings** has text size,
 high contrast and fullscreen. Saves live in `%APPDATA%\ProjectMystery`.
 
