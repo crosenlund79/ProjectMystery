@@ -25,6 +25,10 @@ Press T (or the Tablet button) for your tablet: case notes, notebook, evidence, 
 the timeline (it flags accounts that cannot both be true), hints, and "Solve the case",
 where you submit your theory and discover what really happened.
 
+People answer briefly, about the time in question, and sum up everyday things. Ask
+them to "Tell me more" for the details, or "And before that?" to go further back. Both
+are free. Only pressing someone costs patience.
+
 Mark what you learn Suspicious, Active or Ignore (ignored things are never deleted:
 "Review ignored" brings them back). Pick "Hobby Detective" on the New Case screen to be
 able to check suspicious items: you learn whether they are connected to the incident,

@@ -22,6 +22,7 @@ func run(t, _tree) -> void:
 	_statuses(t)
 	_verdicts_match_the_truth(t)
 	_checks(t)
+	_summaries(t)
 	_spoilers(t)
 
 
@@ -32,6 +33,8 @@ static func _gather(inv) -> void:
 			continue
 		for topic in ["whereabouts", "window", "incident", "money", "conflicts", "rumors", "vehicles", "past"]:
 			inv.ask(r["id"], topic)
+			inv.ask(r["id"], topic, false, "earlier")
+			inv.ask(r["id"], topic, false, "more")
 	for p in inv.data["places"]:
 		inv.inspect_place(p["id"])
 	for v in inv.data["vehicles"]:
@@ -166,6 +169,29 @@ func _checks(t) -> void:
 	t.eq(back.mode(), "hobby", "mode lost")
 	t.eq(int(back.state["strikes"]), 1, "strike lost")
 	t.check(back.check(target).get("repeat", false), "the earlier answer was lost")
+	t.end()
+
+
+func _summaries(t) -> void:
+	t.begin("a summary is not checked itself; the statements it sums up are, one by one")
+	var seen := 0
+	for pkg in packages:
+		var inv = Investigation.new(pkg, null)
+		inv.state["mode"] = "hobby"
+		_gather(inv)
+		for e in inv.state["entries"]:
+			if e["source"] != "statement" or not inv.is_summary(String(e["ref"])):
+				continue
+			var eid := String(e["id"])
+			t.check(not inv.checkable(eid), "a summary can be checked")
+			inv.set_status(eid, "suspicious")
+			var res: Dictionary = inv.check(eid)
+			t.check(String(res.get("error", "")).contains("sums up"), "checking a summary did not explain why not")
+			for m in inv.item(String(e["ref"]))["members"]:
+				t.check(inv.state["by_ref"].has(m), "asking for more did not tell what a summary stands for")
+				t.check(inv.checkable(String(inv.state["by_ref"].get(m, ""))), "a statement behind a summary cannot be checked")
+			seen += 1
+	t.check(seen > 20, "the library has too few summaries to test")
 	t.end()
 
 

@@ -151,6 +151,9 @@ def reveal_model(inv: "Investigation") -> dict | None:
             model["annotations"].append({"entry": e["id"], "text": e["text"], "verdict": verdict,
                                          "cited": e["id"] in cited})
     found = {e.get("ref") for e in inv.notebook.entries()}
+    for ref in list(found):
+        # a summary you heard counts for the statements it stands for
+        found.update((inv._item(ref) or {}).get("members", []) if ref else [])
     for ch in truth["suitability"]["channels"]:
         if ch["strength"] in ("strong", "hearsay") and not any(k in found for k in ch["keys"]):
             src = names.get(ch["source"]) or truth.get("place_names", {}).get(ch["source"], ch["source"])

@@ -16,10 +16,46 @@ func run(t, _tree) -> void:
 		if r["ok"]:
 			packages.append(r["package"])
 	_testimony(t)
+	_follow_ups(t)
 	_evidence(t)
 	_hints(t)
 	_spoilers_and_reveal(t)
 	_conflicts(t)
+
+
+func _follow_ups(t) -> void:
+	t.begin("first answers are short; 'tell me more' and 'and before that?' lose nothing")
+	var lines := 0
+	var asked := 0
+	for pkg in packages:
+		var inv = Investigation.new(pkg, null)
+		var testimony: Dictionary = pkg["investigation"]["testimony"]
+		for rid in testimony:
+			for bt in Investigation.BASE_TOPICS:
+				var res: Dictionary = inv.ask(rid, bt[0])
+				asked += 1
+				for line in res["lines"]:
+					if not line["notes"].is_empty():
+						lines += 1
+	t.check(asked > 0 and float(lines) / asked <= 3.0, "first answers are long: %d lines for %d questions" % [lines, asked])
+	for pkg in packages.slice(0, 4):
+		var inv = Investigation.new(pkg, null)
+		var testimony: Dictionary = pkg["investigation"]["testimony"]
+		for rid in testimony:
+			inv.state["goodwill"][rid] = 99
+			var topics := {}
+			for it in testimony[rid]["items"]:
+				for tp in it["topics"]:
+					topics[tp] = true
+			for tp in topics:
+				inv.ask(rid, tp, true)
+				inv.ask(rid, tp, false, "earlier")
+				var more: Dictionary = inv.ask(rid, tp, false, "more")
+				t.check(not more["can_more"], "more is still offered after asking for it")
+				t.check(not more["can_earlier"], "'and before that?' is still offered after asking it")
+			for it in testimony[rid]["items"]:
+				t.check(inv.state["by_ref"].has(it["key"]), "%s %s: %s is never told" % [pkg["case_id"], rid, it["key"]])
+	t.end()
 
 
 func _find_guarded() -> Array:
@@ -35,7 +71,10 @@ func _find_guarded() -> Array:
 				if not it["guarded"] or it.has("group") or open_texts.has(it["text"]):
 					continue
 				for bt in Investigation.BASE_TOPICS:
-					if it["topics"].has(bt[0]):
+					# pressing lets out what was held back about recent times; older things come out when
+					# asked "and before that?" (see _follow_ups)
+					var recent: bool = it.get("era", "recent") == "recent" or Investigation.ALL_TIMES.has(bt[0])
+					if it["topics"].has(bt[0]) and recent:
 						return [pkg, rid, bt[0], it["text"]]
 	return []
 

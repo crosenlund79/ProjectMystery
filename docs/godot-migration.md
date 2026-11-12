@@ -117,6 +117,12 @@ Detective mode, a suspicious statement, trace or record line can be checked agai
 verdict, with three strikes for wrong calls. Relevance comes from the simulation's causal record; see
 investigation-rules.md.
 
+**Conversation.** People answer the way people talk: about the time in question, with everyday things summed
+up. "Tell me more" gives the details and "And before that?" goes further back; both are free. The case export
+shapes this (summaries, plain and exact accounts, `era`), and nothing is dropped: every statement can still
+be heard. The timeline starts where first answers start, with a "Show earlier times" switch. See
+case-format.md and investigation-rules.md.
+
 The town's rules live in `scripts/core/town.gd`, with no UI code, and are tested on every bundled case
 (`tests/test_town.gd`). The tablet and the map only call them.
 

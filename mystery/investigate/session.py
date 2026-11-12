@@ -144,14 +144,19 @@ class Investigation:
     def topics(self, rid: str) -> list[tuple[str, str]]:
         return dialogue.topics_for(self.data, rid)
 
-    def ask_result(self, who: str, topic: str, press: bool = False) -> dict:
-        """Structured answer (the contract the Godot game reproduces; see docs/investigation-rules.md)."""
+    def ask_result(self, who: str, topic: str, press: bool = False, follow: str = "") -> dict:
+        """Structured answer (the contract the Godot game reproduces; see docs/investigation-rules.md).
+
+        follow: "" for the question itself, "more" for "tell me more", "earlier" for "and before that?"."""
         self._open()
         r = self.resident(who)
         if topic.startswith("about:"):
             topic = f"person:{self.resident(topic[6:])['id']}"
-        res = {"op": "ask", "speaker": r["id"], "topic": topic, "pressed": press, "dead": False, "lines": [],
-               "goodwill": None, "can_press": False, "followups": []}
+        if follow not in ("",) + dialogue.FOLLOWS or (follow and press):
+            raise InvestigationError(f"Unknown follow-up {follow!r}.")
+        res = {"op": "ask", "speaker": r["id"], "topic": topic, "pressed": press, "follow": follow, "dead": False,
+               "lines": [], "goodwill": None, "can_press": False, "can_more": False, "can_earlier": False,
+               "followups": []}
         if r["condition"] == "deceased":
             res["dead"] = True
             res["lines"] = [{"text": f"{r['first']} is dead.", "notes": []}]
@@ -159,7 +164,7 @@ class Investigation:
         valid = {t for t, _ in self.topics(r["id"])}
         if topic not in valid:
             raise InvestigationError(f"Unknown topic {topic!r}.")
-        lines, _heard = dialogue.answer(self.data, self.state, r["id"], topic, press)
+        lines, _heard = dialogue.answer(self.data, self.state, r["id"], topic, press, follow)
         followups: list[str] = []
         for text, members in lines:
             ids = [self.notebook.record("S", it["key"], f"{r['first']}: \"{it['text']}\"", "statement",
@@ -171,11 +176,12 @@ class Investigation:
                         followups.append(x)
         res["goodwill"] = self.state["goodwill"][r["id"]]
         res["can_press"] = topic not in self.state["pressed"][r["id"]] and res["goodwill"] > 0
+        res.update(dialogue.follow_ups(self.data, self.state, r["id"], topic))
         res["followups"] = sorted(followups)
         return res
 
-    def ask(self, who: str, topic: str, press: bool = False) -> list[str]:
-        res = self.ask_result(who, topic, press)
+    def ask(self, who: str, topic: str, press: bool = False, follow: str = "") -> list[str]:
+        res = self.ask_result(who, topic, press, follow)
         if res["dead"]:
             return [res["lines"][0]["text"]]
         first = self.name(res["speaker"])
@@ -183,6 +189,10 @@ class Investigation:
         for i, line in enumerate(res["lines"]):
             tag = f"  [{_span(line['notes'])}]" if line["notes"] else ""
             out.append((f"{first.upper()}: " if i == 0 else "  ") + line["text"] + tag)
+        more = [w for w, on in (("'more' for details", res["can_more"]), ("'earlier' for before that",
+                                                                          res["can_earlier"])) if on]
+        if more:
+            out.append(f"  (Follow up: {', '.join(more)}.)")
         return out
 
     # ----------------------------------------------------------- looking around

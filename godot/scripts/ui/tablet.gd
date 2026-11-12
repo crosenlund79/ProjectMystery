@@ -58,6 +58,7 @@ var nav := {}
 var notebook_filter := ""
 var status_filter := "all"
 var show_ignored := false
+var show_earlier := false
 var mode_label: Label
 var timeline_person := ""
 var timeline_selected := ""
@@ -238,6 +239,7 @@ func _page_case() -> void:
 	list.add_child(_info_card("How to investigate",
 			"Walk around town: click a building on the map to go there. You meet whoever is there, and the people you have seen stay marked on the map. Click one of them to go back and talk.\n\n"
 			+ "Testimony tells you what someone believes. People misremember, repeat rumours and protect those they love, and whoever is responsible may lie.\n\n"
+			+ "People answer the way people do: about the time in question, with everyday things summed up. Ask them to tell you more for the details, ask 'and before that?' to go further back, or ask about one person in particular. Only pressing costs patience.\n\n"
 			+ "Look around each place. Record books are kept where they belong: the ledger at the shop, the bar tabs at the pub, the patient log at the clinic. Private places and their books need the owner's agreement, and a refusal can tell you something too.\n\n"
 			+ "Sort what you learn as you go: mark it Suspicious, Active, or Ignore it (ignored things are never deleted - Review ignored brings them back)."
 			+ (" As a Hobby Detective you can check anything you marked suspicious: you learn whether it is connected to the incident, never who did it or whether anyone lied. Three wrong calls and the checks are gone; right ones are free.\n\n" if engine.mode() == "hobby" else "\n\n")
@@ -403,6 +405,9 @@ func _entry_card(e: Dictionary, conflicts: Array) -> Control:
 	head.add_child(opt)
 	v.add_child(head)
 	v.add_child(Kit.label(String(e["text"])))
+	if e["ref"] != null and engine.is_summary(String(e["ref"])):
+		v.add_child(Kit.label("This sums up several things they told you. Ask them to tell you more for the details.",
+				"MutedLabel"))
 	if not conflicts.is_empty():
 		v.add_child(Kit.label("⚠ Conflicts with " + ", ".join(PackedStringArray(conflicts))
 				+ " — they cannot all be true.", "DangerLabel"))
@@ -679,13 +684,30 @@ func _page_timeline() -> void:
 		si.button_pressed = show_ignored
 		si.toggled.connect(_toggle_show_ignored)
 		row.add_child(si)
+	# The timeline starts where people's first answers start; older entries stay one click away.
+	var since: int = engine.recent_from()
+	var older := 0
+	for e in tl["entries"]:
+		if int(e["time"]) < since:
+			older += 1
+	if older > 0:
+		var se := CheckBox.new()
+		se.name = "ShowEarlier"
+		se.text = "Show earlier times (%d)" % older
+		se.tooltip_text = "Entries from before %s" % Clock.fmt(since)
+		se.button_pressed = show_earlier
+		se.toggled.connect(_toggle_show_earlier)
+		row.add_child(se)
 	content.add_child(row)
-	if not show_ignored and ignored > 0:
+	if (not show_ignored and ignored > 0) or (not show_earlier and older > 0):
 		tl = tl.duplicate()
 		var kept := []
 		for f in tl["facts"]:
-			if engine.status_of(String(f["entry"])) != "ignored":
-				kept.append(f)
+			if not show_ignored and engine.status_of(String(f["entry"])) == "ignored":
+				continue
+			if not show_earlier and int(f["to"]) < since:
+				continue
+			kept.append(f)
 		tl["facts"] = kept
 	var chart = TimelineChart.new()
 	chart.name = "TimelineChart"
@@ -709,6 +731,8 @@ func _page_timeline() -> void:
 			continue
 		if not show_ignored and engine.status_of(String(e["id"])) == "ignored":
 			continue
+		if not show_earlier and int(e["time"]) < since:
+			continue
 		var line := Kit.hbox(10)
 		line.name = "Entry_" + String(e["id"])
 		var stamp := Kit.label(("≈ " if e["id"].begins_with("S") else "") + e["label"], "AccentLabel", false)
@@ -727,7 +751,15 @@ func _page_timeline() -> void:
 	if tl["entries"].is_empty():
 		list.add_child(Kit.label("Nothing with a time on it yet. Ask people where they were and what they saw.",
 				"MutedLabel"))
+	elif list.get_child_count() == 0:
+		list.add_child(Kit.label("Nothing to show here with these settings. Try showing earlier times or ignored entries.",
+				"MutedLabel"))
 	content.add_child(Kit.scroll(list))
+
+
+func _toggle_show_earlier(on: bool) -> void:
+	show_earlier = on
+	show_page("timeline")
 
 
 func _toggle_show_ignored(on: bool) -> void:

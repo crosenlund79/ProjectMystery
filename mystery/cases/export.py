@@ -21,7 +21,8 @@ from typing import TYPE_CHECKING
 from mystery import CASE_SCHEMA, CONFIG_VERSION, SIM_VERSION
 from mystery.cases import relevance
 from mystery.cases import suitability as suit
-from mystery.cases.testimony import describe_segments, drinks_before, render, segments
+from mystery.cases.testimony import (concise_segments, describe_concise, describe_segments, drinks_before,
+                                     render, segments, summary_text)
 from mystery.rng import stream
 from mystery.sim.actions import anchors_for
 from mystery.sim.clock import DAY, fmt, fmt_span
@@ -32,6 +33,12 @@ if TYPE_CHECKING:
     from mystery.sim.engine import Simulation
 
 SCENE_KINDS = {"presence", "sighting", "noise", "intoxicated", "saw_collision", "argument", "assault"}
+# How far before the time in question people's first answers reach ("the evening before"). Anything that
+# happened before that is still remembered and still told, but only when the investigator asks about
+# earlier times: the item is marked era "earlier".
+LEAD_IN = 13 * 60
+# Everyday sightings at the same place are told as one session while the gaps between them stay below this.
+SESSION_GAP = 2 * 60
 PLAYER_ROLE = ("You grew up here and came back last week after months away, so you were not part of anything "
                "that happened. People know you and will talk to you, but you have no official power: you can ask, "
                "look around public places, and look at private places or books only if their owners agree.")
@@ -56,7 +63,9 @@ class _Builder:
         w0, w1 = inc.window
         self.window = [w0, w1]
         self.focus = [max(w0 - 120, now - 2 * DAY), min(max(w1, w0 + 60), now)]
+        self.recent_from = min(w0, self.focus[0]) - LEAD_IN
         self.items: dict[str, list[dict]] = {}
+        self.meta: dict[str, dict] = {}  # key -> the claim behind a statement (build-time only, never exported)
         self.audit: dict[str, dict] = {}
         self.evasive: dict[str, list[str]] = {}
         self._n = 0
@@ -86,19 +95,25 @@ class _Builder:
 
     def add(self, speaker: str, text: str, topics: list[str], source: str, time: int | None, place: str | None,
             about: list[str], guarded: bool, audit: dict, group: dict | None = None,
-            facts: list[dict] | None = None) -> None:
+            facts: list[dict] | None = None, claim: Claim | None = None) -> dict:
         for existing in self.items.get(speaker, []):
             if existing["text"] == text and existing["guarded"] == guarded:
                 existing["topics"] = sorted(set(existing["topics"]) | set(topics))
-                return
+                return existing
         k = self.key()
         item = {"key": k, "text": text, "topics": sorted(set(topics)), "source": source, "time": time,
                 "place": place, "about": sorted({a for a in about if a}), "guarded": guarded,
                 "facts": facts or []}
         if group:
             item["group"] = group
+        end = claim.end if claim is not None and claim.end is not None else time
+        if end is not None and end < self.recent_from:
+            item["era"] = "earlier"
         self.items.setdefault(speaker, []).append(item)
         self.audit[k] = {"speaker": speaker, "source": source, **audit}
+        if claim is not None:
+            self.meta[k] = {"claim": claim, "source": source}
+        return item
 
     def in_focus(self, t: int | None, pad: int = 6 * 60) -> bool:
         return t is not None and self.focus[0] - pad <= t <= self.now
@@ -119,6 +134,7 @@ class _Builder:
         for rid in sim.ids:
             if sim.residents[rid].alive:
                 self._resident(rid)
+                self._summarize(rid)
         consent = self._consent()
         evidence = self._evidence(consent)
         records = self._records(consent)
@@ -175,7 +191,7 @@ class _Builder:
                 continue
             self.add(rid, render(sim, rid, b, claim), topics, b.source, claim.start, claim.location,
                      [claim.subject, claim.other], disclosure == "guarded", audit, _group(sim, b, claim),
-                     _facts(claim))
+                     _facts(claim), claim=claim)
         if concealing and inc.family == "collision":
             veh = r.vehicle
             if veh:
@@ -185,6 +201,140 @@ class _Builder:
                          {"belief": None, "status": "lie", "error": "invented a deer to explain the damage",
                           "disclosure": "open", "withheld_reason": None, "supports": [], "event": None, "lie": True,
                           "about_event": inc.core_event})
+
+    # ------------------------------------------------------------ summaries
+    def _summarize(self, rid: str) -> None:
+        """Everyday information is told the way people tell it: 'I saw Ana, Ben and Cat at the pub that
+        evening', 'from what I hear, half the town owes the grocer', 'plenty of people owe me'. Each summary
+        is a statement of its own (one notebook entry); the statements it stands for stay in the package as
+        its members, word for word, and are told when the investigator asks for more or asks about one of
+        the people. Only open, everyday information is summarized: nothing guarded, no sighting in the dark
+        or of someone the speaker could not make out, no lie, nothing about the speaker's own whereabouts."""
+        sim = self.sim
+        groups: dict[tuple, list[dict]] = {}
+        for it in self.items.get(rid, []):
+            m = self.meta.get(it["key"])
+            if m is None or it["guarded"] or self.audit[it["key"]].get("lie"):
+                continue
+            if not [tp for tp in it["topics"] if not tp.startswith("person:") and tp != "other"]:
+                continue  # told only when asked about someone in particular, one at a time already
+            c, src, era = m["claim"], m["source"], it.get("era", "recent")
+            party = (c.subject, c.other)
+            key: tuple | None = None
+            everyday = c.kind in ("presence", "intoxicated") or (
+                # someone recognised in daylight walking through town; vehicles, the dark, anyone unsteady on
+                # their feet and housemates' comings and goings are told one by one
+                c.kind == "sighting" and c.obj is None and c.detail.startswith("heading toward")
+                and "unsteady" not in c.detail and sim.world.locations[c.location].outdoor)
+            if everyday and src == "saw" and c.subject and c.subject != rid and not c.hedged and c.location \
+                    and c.start is not None:
+                sig = tuple(sorted(tp for tp in it["topics"] if not tp.startswith("person:")))
+                key = ("seen", era, sig, c.location)
+            elif c.kind == "debt" and c.subject and c.other and rid not in party and src in ("told", "saw"):
+                key = ("repaid" if c.detail == "repaid" else "owing", era, (), c.other)
+            elif c.kind == "debt" and src == "self" and c.other == rid and c.subject:
+                key = ("repaid_me" if c.detail == "repaid" else "owed_me", era, (), rid)
+            elif c.kind == "refusal" and c.subject and c.other and rid not in party and src in ("told", "saw"):
+                key = ("refused", era, (), c.other)
+            elif c.kind == "suspect" and src == "told" and c.subject and c.detail:
+                key = ("suspected", era, (), c.detail)  # who the town is pointing at, over one matter
+            elif c.kind == "refusal" and src == "self" and c.other == rid and c.subject:
+                key = ("i_asked", era, (), rid)  # the people who turned the speaker down
+            elif src == "self" and c.subject and ((c.kind == "refusal" and c.subject == rid and c.other)
+                                                  or (c.kind == "hardship" and c.subject != rid)):
+                key = ("asked_me", era, (), rid)
+            if key is not None:
+                groups.setdefault(key, []).append(it)
+        for key, members in groups.items():
+            if key[0] != "seen":
+                if len(members) >= 2:
+                    self._add_summary(rid, key, members)
+                continue
+            members = sorted(members, key=lambda it: (it["time"], it["key"]))
+            session: list[dict] = []
+            last_end = None
+            for it in members + [None]:
+                c = self.meta[it["key"]]["claim"] if it is not None else None
+                if it is None or (last_end is not None and c.start - last_end > SESSION_GAP):
+                    if len(session) >= 2:
+                        self._add_summary(rid, key, session)
+                    session = []
+                    last_end = None
+                if it is not None:
+                    session.append(it)
+                    end = c.end if c.end is not None else c.start
+                    last_end = end if last_end is None else max(last_end, end)
+
+    def _add_summary(self, rid: str, key: tuple, members: list[dict]) -> None:
+        sim = self.sim
+        kind, era = key[0], key[1]
+        claims = [self.meta[it["key"]]["claim"] for it in members]
+        sources = {self.meta[it["key"]]["source"] for it in members}
+        source = "told" if sources == {"told"} else ("self" if sources == {"self"} else "saw")
+        voice = sources.pop() if len(sources) == 1 else "mixed"
+        sig = tuple(sorted({tp for it in members for tp in it["topics"] if not tp.startswith("person:")}))
+        if kind in ("owing", "repaid", "refused"):
+            # the person everything here is about (the creditor, the one asking for money): asked about
+            # them, this is told in summary too; asked about anyone else in it, their own lines are told
+            sig = tuple(sorted(sig + (f"person:{key[3]}",)))
+
+        def firsts(ids) -> list[str]:
+            return sorted({sim.residents[x].first for x in ids if x})
+        place = None
+        late = firsts(c.subject for c in claims if c.kind == "debt" and c.detail == "overdue")
+        if kind == "seen":
+            place = key[3]
+            start = min(c.start for c in claims)
+            end = max(c.end if c.end is not None else c.start for c in claims)
+            text = summary_text("seen", voice, firsts(c.subject for c in claims), place=sim.world.name(place),
+                                span=fmt_span(start, end),
+                                also=firsts(c.subject for c in claims if c.kind == "intoxicated"))
+        elif kind == "asked_me":
+            text = summary_text("asked_me", voice, firsts(c.other if c.kind == "refusal" else c.subject
+                                                          for c in claims),
+                                also=firsts(c.other for c in claims if c.kind == "refusal"), era=era)
+        elif kind == "i_asked":
+            text = summary_text("i_asked", voice, firsts(c.subject for c in claims), era=era)
+        elif kind in ("owed_me", "repaid_me"):
+            text = summary_text(kind, voice, firsts(c.subject for c in claims), also=late, era=era)
+        elif kind == "suspected":
+            text = summary_text("suspected", voice, firsts(c.subject for c in claims), party=key[3])
+        elif kind == "refused":
+            text = summary_text("refused", voice, firsts(c.subject for c in claims),
+                                party=sim.residents[key[3]].first, era=era)
+        else:
+            text = summary_text(kind, voice, firsts(c.subject for c in claims), party=sim.residents[key[3]].first,
+                                also=late, era=era)
+        times = [it["time"] for it in members if it["time"] is not None]
+        facts: list[dict] = []
+        for it in members:
+            for f in it["facts"]:
+                if f not in facts:
+                    facts.append(f)
+        k = self.key()
+        item = {"key": k, "text": text, "topics": list(sig), "source": source,
+                "time": min(times) if times else None, "place": place,
+                "about": sorted({a for it in members for a in it["about"]} - {rid}), "guarded": False,
+                "facts": facts, "members": [it["key"] for it in members]}
+        if era == "earlier":
+            item["era"] = "earlier"
+        for it in members:
+            it["in"] = k
+        self.items[rid].append(item)
+        audits = [self.audit[it["key"]] for it in members]
+        statuses = [a["status"] for a in audits]
+        error = None
+        if "mistaken" in statuses:
+            status = "mistaken"
+            error = "partly wrong: " + next(a.get("error") or "wrong" for a in audits if a["status"] == "mistaken")
+        elif all(st == "unverifiable" for st in statuses):
+            status = "unverifiable"
+        else:
+            status = "accurate"
+        supports = sorted({sp for a in audits if a["status"] == "accurate" for sp in a.get("supports", [])})
+        self.audit[k] = {"speaker": rid, "source": source, "belief": None, "status": status, "error": error,
+                         "disclosure": "open", "withheld_reason": None, "supports": supports, "event": None,
+                         "lie": False, "root": rid, "summary": True, "members": item["members"]}
 
     def _root(self, b) -> str:
         """Who originally perceived this? Hearsay is only as independent as its source."""
@@ -393,13 +543,22 @@ class _Builder:
             if drinks_before(sim, rid, e) >= 4 and loc != sim.residents[rid].home:
                 hazy = e
                 break
+        # Two tellings of the same account: the plain answer (where they spent their time) and, when asked
+        # to be exact, every move with its times. The exact one is filed behind the plain one.
+        keep = {self.inc.hook_place} if self.inc.hook_place in sim.world.locations else set()
         truth_text = describe_segments(sim, rid, segs, hazy)
+        short = concise_segments(sim, segs, keep)
+        short_text = describe_concise(sim, rid, short, hazy)
         if not lie:
-            audit = {"belief": None, "status": "accurate", "error": None, "disclosure": "open",
-                     "withheld_reason": None, "supports": self._self_supports(rid, segs), "event": None,
-                     "lie": False, "segments": segs}
-            self.add(rid, truth_text, ["whereabouts"], "self", a, None, [rid], False, audit,
-                     facts=_segment_facts(rid, segs))
+            def audit(sg: list[list]) -> dict:
+                return {"belief": None, "status": "accurate", "error": None, "disclosure": "open",
+                        "withheld_reason": None, "supports": self._self_supports(rid, sg), "event": None,
+                        "lie": False, "segments": sg}
+            plain = self.add(rid, short_text, ["whereabouts"], "self", a, None, [rid], False, audit(short),
+                             facts=_segment_facts(rid, short))
+            exact = self.add(rid, truth_text, ["whereabouts"], "self", a, None, [rid], False, audit(segs),
+                             facts=_segment_facts(rid, segs))
+            self._file_behind(rid, plain, exact)
             return
         ct = self.inc.time
         home = sim.residents[rid].home
@@ -416,12 +575,25 @@ class _Builder:
                 merged[-1][2] = seg[2]
             else:
                 merged.append(list(seg))
-        text = describe_segments(sim, rid, merged, None)
-        audit = {"belief": None, "status": "lie", "error": "hid where they really were", "disclosure": "open",
-                 "withheld_reason": None, "supports": ["responsible_lie"], "event": None, "lie": True,
-                 "segments": merged, "true_segments": segs, "true_text": truth_text}
-        self.add(rid, text, ["whereabouts"], "self", a, None, [rid], False, audit,
-                 facts=_segment_facts(rid, merged))
+        fake_short = concise_segments(sim, merged, keep)
+
+        def lie_audit(sg: list[list], true_sg: list[list], true_text: str) -> dict:
+            return {"belief": None, "status": "lie", "error": "hid where they really were", "disclosure": "open",
+                    "withheld_reason": None, "supports": ["responsible_lie"], "event": None, "lie": True,
+                    "segments": sg, "true_segments": true_sg, "true_text": true_text}
+        plain = self.add(rid, describe_concise(sim, rid, fake_short, None), ["whereabouts"], "self", a, None, [rid],
+                         False, lie_audit(fake_short, short, short_text), facts=_segment_facts(rid, fake_short))
+        exact = self.add(rid, describe_segments(sim, rid, merged, None), ["whereabouts"], "self", a, None, [rid],
+                         False, lie_audit(merged, segs, truth_text), facts=_segment_facts(rid, merged))
+        self._file_behind(rid, plain, exact)
+
+    def _file_behind(self, rid: str, plain: dict, exact: dict) -> None:
+        """The exact account is told when asked for more; the plain one stands in front of it."""
+        if plain is exact:
+            return
+        plain["members"] = [exact["key"]]
+        exact["in"] = plain["key"]
+        self.audit[exact["key"]]["exact_of"] = plain["key"]  # the same account told in full: counted once
 
     def _self_supports(self, rid: str, segs: list[list]) -> list[str]:
         out = []
@@ -544,7 +716,9 @@ class _Builder:
             "player_role": PLAYER_ROLE,
             "hook": {"title": inc.title, "text": inc.hook_text, "kind": inc.hook_kind, "place": inc.hook_place,
                      "window": self.window, "window_label": fmt_span(*self.window),
-                     "discovered_by": inc.discovered_by},
+                     "discovered_by": inc.discovered_by,
+                     # where people's first answers start (schema 0.3): earlier times come up when asked
+                     "recent_from": self.recent_from},
             "residents": residents,
             "places": places,
             "vehicles": veh_out,

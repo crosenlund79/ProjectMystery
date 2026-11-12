@@ -200,6 +200,12 @@ def check_case(case: dict) -> list[str]:
                 continue
             if a["status"] == "lie" and not a.get("error"):
                 problems.append(f"{it['key']}: lie without an explanation")
+            if a.get("summary"):
+                members = [audit.get(k) for k in it.get("members", [])]
+                if len(members) < 2 or any(m is None or m.get("summary") for m in members) \
+                        or a.get("members") != it.get("members"):
+                    problems.append(f"{it['key']}: summary that does not stand for two or more statements")
+                continue
             if a["status"] != "lie" and a.get("belief") is None and "whereabouts" not in it["topics"]:
                 problems.append(f"{it['key']}: truthful statement with no belief behind it")
     return problems

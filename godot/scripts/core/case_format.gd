@@ -195,6 +195,8 @@ static func validate(pkg) -> Array:
 		var w = _need(hook, "window", "list", "hook", p)
 		if w != null and (w.size() != 2 or not _is_int(w[0]) or not _is_int(w[1])):
 			p.append("hook: window must be two integer times")
+		if typeof(hook) == TYPE_DICTIONARY and hook.has("recent_from") and not _is_int(hook["recent_from"]):
+			p.append("hook: recent_from must be an integer time")
 	var rids := {}
 	var residents := _list(_need(inv, "residents", "list", "investigation", p))
 	for i in range(residents.size()):
@@ -297,6 +299,9 @@ static func validate(pkg) -> Array:
 				var g = it["group"]
 				if typeof(g) != TYPE_DICTIONARY or not str(g.get("template", "")).contains("{names}") or not g.get("id"):
 					p.append("%s: malformed group" % w)
+			if typeof(it) == TYPE_DICTIONARY and it.has("era") and it["era"] != "earlier":
+				p.append("%s: era must be 'earlier' when given" % w)
+		_check_layers(items, where, p)
 	var opts := _dict(_need(inv, "theory_options", "dict", "investigation", p))
 	for kind in ["mechanisms", "motives"]:
 		var list := _list(_need(opts, kind, "list", "theory_options", p))
@@ -349,3 +354,27 @@ static func unseal(sealed: Dictionary, case_id: String) -> Dictionary:
 	if json.parse(plain.get_string_from_ascii()) != OK or typeof(json.data) != TYPE_DICTIONARY:
 		return {"ok": false, "truth": null, "error": "the sealed truth is not readable"}
 	return {"ok": true, "truth": json.data, "error": ""}
+
+
+static func _check_layers(items: Array, where: String, p: Array) -> void:
+	## Optional (schema 0.3): a statement with "members" stands for those statements of the same person,
+	## each of which names it back with "in".
+	var by_key := {}
+	for it in items:
+		if typeof(it) == TYPE_DICTIONARY:
+			by_key[it.get("key")] = it
+	for k in by_key:
+		var it: Dictionary = by_key[k]
+		if it.has("members"):
+			var ms = it["members"]
+			var ok: bool = typeof(ms) == TYPE_ARRAY and not ms.is_empty()
+			if ok:
+				for m in ms:
+					if not by_key.has(m) or by_key[m].get("in") != k:
+						ok = false
+			if not ok:
+				p.append("%s.%s: members that do not name it back" % [where, k])
+		if it.has("in"):
+			var front = by_key.get(it["in"])
+			if typeof(front) != TYPE_DICTIONARY or not front.get("members", []).has(k):
+				p.append("%s.%s: filed behind a statement that does not list it" % [where, k])

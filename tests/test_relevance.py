@@ -42,7 +42,12 @@ class Relevance(unittest.TestCase):
                 items = pkg["relevance"]["items"]
                 self.assertEqual(pkg["relevance"]["scheme"], REL_SCHEME)
                 inv = pkg["investigation"]
-                refs = set(statements(pkg))
+                audit = truth["testimony_audit"]
+                summaries = {k for k in statements(pkg) if audit[k].get("summary")}
+                # a summary is not checked itself: its statements are, one by one, and each has a verdict
+                self.assertFalse(summaries & set(items), "a summary has a verdict of its own")
+                self.assertTrue({m for k in summaries for m in audit[k]["members"]} <= set(items))
+                refs = set(statements(pkg)) - summaries
                 refs |= {tr["id"] for p in inv["places"] for tr in p["traces"]}
                 refs |= {tr["id"] for v in inv["vehicles"] for tr in v["traces"]}
                 refs |= {x["id"] for b in inv["records"].values() for x in b["entries"]}

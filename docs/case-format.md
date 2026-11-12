@@ -42,7 +42,7 @@ verify this. `test_a_bundled_case_regenerates_identically_from_its_seed` does it
 
 ## `investigation` (player-safe)
 
-This is the same object the Python game uses as `investigation.json` (schema `investigation/0.2`). Everything
+This is the same object the Python game uses as `investigation.json` (schema `investigation/0.3`). Everything
 in it is something a player may legitimately discover: the hook, residents, places and vehicles, consent
 decisions, what each resident is willing to say, reachable traces and records, the theory options, and the
 hint ladder. It never contains event ids, intents, accuracy flags, causal links or the answer. The validator
@@ -52,7 +52,7 @@ rejects any of these keys anywhere in it: `intent`, `causes`, `status`, `lie`, `
 
 | Field | Contents |
 |---|---|
-| `hook` | `title`, `text`, `kind`, `place`, `window` (two minute times), `window_label`, `discovered_by` |
+| `hook` | `title`, `text`, `kind`, `place`, `window` (two minute times), `window_label`, `discovered_by`, `recent_from` |
 | `residents[]` | `id`, `name`, `first`, `occupation`, `age_group`, `household`, `home`, `condition` (`alive`/`injured`/`deceased`), `now_at` |
 | `places[]` | `id`, `name`, `kind`, `owners[]`, `allowed`, `reply`, `traces[]` (`id`, `description`); traces are empty when not allowed |
 | `vehicles[]` | `id`, `name`, `kind`, `household`, `location`, `allowed`, `reply`, `traces[]` |
@@ -74,12 +74,44 @@ Each testimony item has these fields:
 | `guarded` | Only said when the player presses (loyalty or uncertainty). Withheld knowledge is not in the file at all; it only shows up as `evasive_topics`. |
 | `group` | Optional `{id, name, template}`, which lets "I saw A, B and C at…" merge into one line. |
 | `facts[]` | `{who, place, from, to, hedged}`: where the statement *claims* someone was, as the speaker recalls it, with lies and misremembered times included. The timeline and conflict detection use these. |
+| `era` | Optional, `"earlier"`: about a time before `hook.recent_from`. Told when the player asks "and before that?" (schema 0.3). |
+| `members[]` | Optional (schema 0.3): this statement stands in front of these statements of the same resident. A *summary* ("At the Drover's Rest, from about 18:00 to 22:00 on Day 23, I saw Agnes, Bruno and Clara, coming and going") stands for the everyday statements it sums up; a plain account of someone's whereabouts stands for the exact one. |
+| `in` | Optional (schema 0.3): the key of the statement this one stands behind. Told when the player asks for more on a topic the front statement is told on; asked about a person in particular, it is told directly. |
 
 `now_at` (added in schema 0.2, optional) is the place where the resident is at the frozen instant the case
 begins. It is `null` for the dead. This is present state that anyone in town could see by walking around, not
 anything about the past, and it is what the game's town uses to say who is where. Readers must accept packages
 without it (schema 0.1); the game then assumes everyone is at home. Validators reject a `now_at` that is not a
 known place.
+
+### How people answer (schema 0.3)
+
+The export shapes what each resident says the way people talk, without removing anything:
+
+* **Recent first.** `hook.recent_from` is 13 hours before the start of the time in question (or of the last
+  two days, if that window is longer). Statements about earlier times get `era: "earlier"`. Current states
+  (debts still owed, grudges) and the case's own topics (`incident`, `past`) are not limited this way.
+* **Everyday matters in summary.** Each summary is a statement with its own key and its own entry in the
+  notebook. Its `facts` are its members' facts, so the timeline loses nothing, and it names everyone its members
+  name. Summaries cover:
+  * people seen at a place in one session, including who was drunk and anyone recognised in daylight passing
+    through;
+  * debts and repayments between other people, by creditor;
+  * refusals, by who was asking;
+  * who the town is pointing at over a matter;
+  * the speaker's own debtors, the people who came to them for money, and the people who turned them down.
+
+  Guarded statements, lies, sightings in the dark or of someone the speaker could not make out, vehicles,
+  anyone unsteady on their feet, housemates' comings and goings and the speaker's own account are never
+  summed up. A summary that concerns one person in particular (a creditor, someone asking for money) is also
+  told when asked about that person.
+* **Plain and exact accounts.** Asked where they were, people say where they spent their time, from when;
+  asked to be exact, every move, with times. Both are statements with verdicts, and a lie is told both ways.
+
+In the truth, a summary's audit has `summary: true`, its `members`, and a status that is `mistaken` when any
+member is (with `error` "partly wrong: …"). Summaries have no relevance verdict, so Hobby Detective checks the
+statements behind them one by one. Suitability channels and the reveal count a heard summary as having found
+its members.
 
 All times are minutes since Day 1 00:00. JSON numbers are integers; readers that parse numbers as floats
 (Godot does) convert them back to integers.

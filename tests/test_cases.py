@@ -19,6 +19,12 @@ class Testimony(unittest.TestCase):
         for rid, t in case["investigation"]["testimony"].items():
             for it in t["items"]:
                 a = audit[it["key"]]
+                if a.get("summary"):
+                    # a summary traces through the statements it stands for, each with its own belief
+                    self.assertEqual(a["members"], it["members"])
+                    for m in it["members"]:
+                        self.assertIsNotNone(audit[m]["belief"])
+                    continue
                 if a["status"] == "lie":
                     self.assertTrue(a["error"])
                     continue
@@ -29,7 +35,8 @@ class Testimony(unittest.TestCase):
                 if it["source"] == "told":
                     self.assertIn("told me", it["text"])
                 if it["source"] == "saw":
-                    self.assertTrue(it["text"].startswith("I saw"))
+                    # "I saw Ana at the pub", or for a state of affairs seen to be true, "I know Ana owes ..."
+                    self.assertTrue(it["text"].startswith(("I saw", "I know")))
 
     def test_culprit_lies_about_their_whereabouts(self):
         _, _, case = find_case("normal", family="theft")

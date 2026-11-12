@@ -229,6 +229,8 @@ def validate_package(pkg) -> list[str]:
         w = need(hook, "window", "list", "hook")
         if w is not None and (len(w) != 2 or not all(_is_int(x) for x in w)):
             p.append("hook: window must be two integer times")
+        if "recent_from" in hook and not _is_int(hook["recent_from"]):
+            p.append("hook: recent_from must be an integer time")
     residents = need(inv, "residents", "list", "investigation") or []
     rids = set()
     for i, r in enumerate(residents):
@@ -311,6 +313,9 @@ def validate_package(pkg) -> list[str]:
                 g = it["group"]
                 if not isinstance(g, dict) or "{names}" not in str(g.get("template")) or not g.get("id"):
                     p.append(f"{w}: malformed group")
+            if isinstance(it, dict) and it.get("era", "earlier") != "earlier":
+                p.append(f"{w}: era must be 'earlier' when given")
+        p.extend(_check_layers(t.get("items") if isinstance(t, dict) else None, where))
     opts = need(inv, "theory_options", "dict", "investigation") or {}
     for kind in ("mechanisms", "motives"):
         for j, m in enumerate(need(opts, kind, "list", "theory_options") or []):
@@ -322,6 +327,26 @@ def validate_package(pkg) -> list[str]:
         need(h, "text", "str", f"hints[{j}]")
     if not p and re.search(r"\bE\d{6}\b|\bB\d{6}\b", json.dumps(pkg["summary"])):
         p.append("summary: contains internal ids")
+    return p
+
+
+def _check_layers(items, where: str) -> list[str]:
+    """Optional (schema 0.3): a statement with "members" stands for those statements of the same person,
+    each of which names it back with "in"."""
+    if not isinstance(items, list):
+        return []
+    p = []
+    by_key = {it.get("key"): it for it in items if isinstance(it, dict)}
+    for it in by_key.values():
+        k = it.get("key")
+        if "members" in it:
+            ms = it["members"]
+            if not isinstance(ms, list) or not ms or any(by_key.get(m, {}).get("in") != k for m in ms):
+                p.append(f"{where}.{k}: members that do not name it back")
+        if "in" in it:
+            front = by_key.get(it["in"])
+            if front is None or k not in front.get("members", []):
+                p.append(f"{where}.{k}: filed behind a statement that does not list it")
     return p
 
 

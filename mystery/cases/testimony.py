@@ -133,7 +133,8 @@ def _phrases(sim: "Simulation", c: "Claim", teller: str | None) -> tuple[str, st
     if k == "rent_missed":
         return f"{who} miss the rent", f"{who} couldn't pay the rent to {other}"
     if k == "grudge":
-        return "", f"there's bad blood between {who} and {other} — {c.detail}"
+        a, b_ = ("them" if who == "they" else who), ("them" if other == "they" else other)
+        return "", f"there's bad blood between {a} and {b_} — {c.detail}"
     if k == "laid_off":
         return "", f"{other} laid {who} off from the mill"
     if k == "help":
@@ -236,6 +237,8 @@ def render(sim: "Simulation", speaker: str, b: "Belief", claim: "Claim") -> str:
         if text:
             return text
     percept, prop = phrases(sim, claim)
+    if b.source == "saw" and claim.kind == "debt":
+        return f"I know {percept}."  # a state of affairs, not a sight: "I saw X has been ..." is not English
     if b.source == "saw" and percept:
         return f"I saw {percept}."
     if b.source == "heard" and percept:
@@ -243,7 +246,8 @@ def render(sim: "Simulation", speaker: str, b: "Belief", claim: "Claim") -> str:
     if b.source == "told":
         teller = _n(sim, b.told_by)
         _, prop = phrases(sim, claim, b.told_by)
-        return f"{teller} told me {prop}."
+        about = "about " if claim.kind == "loss" else ""  # "told me about 40 crowns missing from ..."
+        return f"{teller} told me {about}{prop}."
     if b.source == "inferred":
         if claim.kind == "suspect":
             return f"If you ask me, {prop}."
@@ -295,6 +299,126 @@ def _r15(t: int) -> int:
     return int(round(t / 15)) * 15
 
 
+def concise_segments(sim: "Simulation", segs: list[list], keep: set[str]) -> list[list]:
+    """What someone actually mentions when asked where they were: the places they spent time, not every
+    street they crossed. Short trips through outdoor places are left out unless the place is in `keep`
+    (the place the case is about, which anyone asked about that night would mention); the time around a
+    dropped trip stays with the places on either side of it."""
+    out: list[list] = []
+    for i, (loc, s, e) in enumerate(segs):
+        passing = sim.world.locations[loc].outdoor and e - s < 25 and 0 < i < len(segs) - 1
+        if passing and loc not in keep:
+            continue
+        if out and out[-1][0] == loc:
+            out[-1][2] = e
+        else:
+            out.append([loc, s, e])
+    return out
+
+
+def describe_concise(sim: "Simulation", rid: str, segs: list[list], hazy_after: int | None = None) -> str:
+    """'On Day 23, from about 14:15 I was at the grocery; at the Drover's Rest from about 17:00; home
+    around 19:15 ...' - each place once, start times only, the end implied by the next place."""
+    if not segs:
+        return "I don't rightly remember."
+    home = sim.residents[rid].home
+    parts: list[str] = []
+    been: set[str] = set()
+    day = day_of(_r15(segs[0][1]))
+    for i, (loc, s, e) in enumerate(segs):
+        t = fmt_clock(_r15(s))
+        d = day_of(_r15(s))
+        lead = f"on Day {d} " if d != day and i > 0 else ""
+        day = d
+        place = sim.world.name(loc)
+        if sim.world.locations[loc].outdoor and e - s < 25 and 0 < i < len(segs) - 1:
+            parts.append(f"{lead}along {place} around {t}")
+        elif i == 0:
+            where = "at home" if loc == home else f"at {place}"
+            parts.append(f"from about {t} I was {where}")
+        elif loc == home:
+            bed = " and to bed" if e - s >= 4 * 60 else ""
+            parts.append(f"{lead}home around {t}{bed}")
+        else:
+            again = "back " if loc in been else ""
+            parts.append(f"{lead}{again}at {place} from about {t}")
+        been.add(loc)
+        if hazy_after is not None and e > hazy_after and loc != home:
+            parts.append("after that it gets hazy — I'd had a fair bit to drink")
+            hazy_after = None
+    return f"On Day {day_of(_r15(segs[0][1]))}, " + "; ".join(parts) + "."
+
+
+def join_names(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _behind(names: list[str], late: list[str], sep: str) -> str:
+    if not late:
+        return ""
+    if late == names:
+        return ", and they're behind with it" if len(names) > 1 else ", and is behind with it"
+    return f"{sep}{join_names(late)} {'are' if len(late) > 1 else 'is'} behind with it"
+
+
+def summary_text(kind: str, source: str, names: list[str], party: str | None = None, place: str | None = None,
+                 span: str = "", also: list[str] | None = None, era: str = "recent") -> str:
+    """One natural sentence standing for several statements of the same everyday kind.
+
+    source is "told" (all hearsay), "saw" (all first-hand), "self" (the speaker's own dealings) or "mixed";
+    `also` is a second list of names the sentence mentions (who was drunk, who is late paying, who was
+    turned down)."""
+    who = join_names(names)
+    plural = len(names) > 1
+    also = also or []
+    if kind == "seen":
+        drunk = ""
+        if also:
+            drunk = f"; {join_names(also)} {'were' if len(also) > 1 else 'was'} the worse for drink"
+        if not plural:
+            return f"I saw {who} at {place} more than once, {span}{drunk}."
+        return f"At {place}, {span}, I saw {who}, coming and going{drunk}."
+    if kind == "owing":
+        verb = "owe" if plural else "owes"
+        lead = {"told": "From what I hear, ", "saw": "I know ", "mixed": "From what I know and hear, "}[source]
+        return f"{lead}{who} {verb} {party} money{_behind(names, also, ' — ')}."
+    recent = era == "recent"
+    if kind == "repaid":
+        if source == "saw":
+            return f"I've seen {who} paying {party} back lately." if recent else \
+                f"I saw {who} pay {party} back a while ago."
+        verb = ("have been paying" if plural else "has been paying") if recent else "paid"
+        return f"I hear {who} {verb} {party} back {'lately' if recent else 'a while ago'}."
+    if kind == "refused":
+        if source == "saw":
+            return f"I've seen {party} ask {who} for money lately and get turned down." if recent else \
+                f"I saw {party} ask {who} for money a while ago and get turned down."
+        asking = "has been asking around for money lately" if recent else "was asking around for money a while ago"
+        return f"I hear {party} {asking}, and {who} said no."
+    if kind == "i_asked":
+        when = "lately" if recent else "a while ago"
+        return f"I asked {who} for money {when}, and {'they all' if plural else 'they'} said no."
+    if kind == "owed_me":
+        verb = "owe" if plural else "owes"
+        return f"{who} {verb} me money{_behind(names, also, '; ')}."
+    if kind == "repaid_me":
+        if recent:
+            return f"{who} {'have' if plural else 'has'} paid me back lately."
+        return f"{who} paid me back a while ago."
+    if kind == "asked_me":
+        came = (f"{who} {'have' if plural else 'has'} come to me for money lately" if recent
+                else f"{who} came to me for money a while ago")
+        if not also:
+            return came + "."
+        if also == names:
+            return came + ", and I had to say no."
+        return came + f"; I had to turn {join_names(also)} down."
+    if kind == "suspected":
+        matter = party if party.startswith("the ") else f"the {party}"
+        return f"People have been pointing at {who} over {matter}."
+    raise ValueError(kind)
+
+
 def drinks_before(sim: "Simulation", rid: str, until: int, hours: int = 5) -> int:
     n = 0
     for ev in sim.log.events:
@@ -303,4 +427,5 @@ def drinks_before(sim: "Simulation", rid: str, until: int, hours: int = 5) -> in
     return n
 
 
-__all__ = ["render", "segments", "describe_segments", "phrases", "first_person", "fmt"]
+__all__ = ["render", "segments", "describe_segments", "describe_concise", "concise_segments", "phrases",
+           "first_person", "summary_text", "join_names", "fmt"]

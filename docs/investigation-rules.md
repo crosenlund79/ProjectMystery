@@ -14,17 +14,32 @@ line of the reveal. `tests/test_package.py` checks that the fixtures still match
 
 Times are minutes since Day 1 00:00. "Entries" are notebook entries.
 
-## Questioning: `ask(resident, topic, press)`
+## Questioning: `ask(resident, topic, press, follow)`
 
 * Topics are the eight base topics (`whereabouts`, `window`, `incident`, `money`, `conflicts`, `rumors`,
   `vehicles`, `past`) plus `person:<id>` for every other resident.
 * The dead cannot answer: `{"dead": true, "lines": [["<First> is dead."]]}`.
 * **Patience:** each resident starts with `goodwill` from the case. Pressing costs 1. A topic can be pressed
   once. At 0 patience, pressing returns *"That's enough questions for today. I've told you what I know."*
-* **What is said:** the items whose `topics` include the topic. Guarded items are included only once the topic
-  has been pressed. The rest are sorted by `(time is null, time or 0, key)`.
+* **What is said:** the items whose `topics` include the topic, except the ones *behind* a summary told on
+  that topic (an item with `in` whose front item has the topic). Guarded items are included only once the
+  topic has been pressed. The rest are sorted by `(time is null, time or 0, key)`.
+* **Recent first:** unless the topic is `incident` or `past`, a question covers items without `era`. The items
+  with `era: "earlier"` are told on the follow-up `earlier`.
+* **Follow-ups** (`follow`; free, and never together with `press`):
+  * `"more"` ("Tell me more", or "Can you be more exact?" for whereabouts) tells the items behind the
+    summaries in reach that are not in the notebook yet. Summaries told on recent times are always in reach;
+    earlier ones once `earlier` has been asked on that topic. If there is nothing new: *"That's about all
+    there is to it."*
+  * `"earlier"` records the topic in `state.earlier[resident]` and tells the earlier items, with guarded ones
+    once pressed. If there are none: *"I can't think of anything before that."* (or the evasive line if only
+    guarded ones remain).
+  * A first question that finds nothing recent while earlier items exist answers *"Nothing lately that I know
+    of."*
+* The result's `can_more` is true when `more` would tell something new. `can_earlier` is true when the topic
+  has earlier items and `earlier` has not been asked on it.
 * **Grouping:** consecutive items with the same `group.id` become one line: the group template with names
-  joined as "A, B and C". All of their entries are recorded.
+  joined as "A, B and C", each name once. All of their entries are recorded.
 * **Nothing to say:** if the resident is withholding on the topic (`evasive_topics`) or has guarded items,
   they give their style's evasive line. Nervous: *"I... I'd rather not get into that."* Smooth: *"Can't help
   you there, I'm afraid."* Otherwise they say *"I don't know anything about that."*
@@ -34,8 +49,8 @@ Times are minutes since Day 1 00:00. "Entries" are notebook entries.
   anything more.)"*
 * Every statement heard becomes entry `S<n>` with text `First: "statement"`, its time and speaker, unless
   it was heard before.
-* The result also gives `goodwill`, `can_press` (the topic is not yet pressed and patience is above 0) and
-  `followups` (the sorted ids of people the statements mention).
+* The result also gives `follow`, `goodwill`, `can_press` (the topic is not yet pressed and patience is above
+  0), `can_more`, `can_earlier` and `followups` (the sorted ids of people the statements mention).
 
 ## Looking around
 
@@ -81,7 +96,8 @@ has no town, so this part has no parity fixtures. It changes where you can act, 
 * **Mode:** each case is played as Normal Detective or Hobby Detective. The mode is chosen on the New Case
   screen, fixed when the case starts, and saved with it.
 * **`check(entry)`, Hobby Detective only:**
-  * Only statements, traces and record lines can be checked, and only once marked suspicious.
+  * Only statements, traces and record lines can be checked, and only once marked suspicious. A summary
+    cannot be checked: ask for more, then check the statements behind it one by one.
   * A check opens that one item's sealed verdict from the package (see case-format.md), never the truth.
   * `unrelated` is a wrong call and costs a strike. `connected` and `uncertain` cost nothing.
   * Asking about the same item again repeats the answer for free.

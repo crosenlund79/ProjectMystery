@@ -25,6 +25,13 @@ const EVASIVE := {"nervous": "I... I'd rather not get into that.", "smooth": "Ca
 const HESITATE := {"nervous": "(They hesitate, as if there is something more they are not saying.)", "smooth": ""}
 const WORN_OUT := "That's enough questions for today. I've told you what I know."
 const NOTHING_MORE := "(Pressing them doesn't get you anything more.)"
+const NOTHING_LATELY := "Nothing lately that I know of."
+const NOTHING_TO_ADD := "That's about all there is to it."
+const NOTHING_EARLIER := "I can't think of anything before that."
+## Follow-up questions: "tell me more" (the statements behind a summary) and "and before that?".
+const FOLLOWS := ["more", "earlier"]
+## Topics about this case or about the past are answered whatever the time.
+const ALL_TIMES := ["incident", "past"]
 const MARKS := ["confirmed", "disputed", "uncertain", "inference"]
 const CONFLICT_MARGIN := 20
 const HINT_LABELS := {1: "Nudge", 2: "Lead", 3: "Strong hint"}
@@ -90,7 +97,7 @@ func _normalize_state() -> void:
 	for k in ["entries", "ui_hints"]:
 		if not state.has(k):
 			state[k] = []
-	for k in ["counters", "by_ref", "goodwill", "pressed", "ui"]:
+	for k in ["counters", "by_ref", "goodwill", "pressed", "earlier", "ui"]:
 		if typeof(state.get(k)) != TYPE_DICTIONARY:
 			state[k] = {}
 	for k in ["credits", "hints_bought", "hint_spend"]:
@@ -241,9 +248,30 @@ func strikes_left() -> int:
 
 
 func checkable(eid: String) -> bool:
-	## Could this entry be checked at all (ignoring strikes and its status)?
+	## Could this entry be checked at all (ignoring strikes and its status)? A summary is not: its
+	## statements are checked one by one.
 	var e := entry(eid)
-	return not e.is_empty() and CHECKABLE.has(String(e["source"])) and e["ref"] != null
+	return not e.is_empty() and CHECKABLE.has(String(e["source"])) and e["ref"] != null \
+			and not is_summary(String(e["ref"]))
+
+
+func recent_from() -> int:
+	## Where people's first answers start; anything before it comes up when you ask "and before that?".
+	var hook: Dictionary = data["hook"]
+	if hook.has("recent_from"):
+		return int(hook["recent_from"])
+	return int(hook["window"][0]) - 13 * 60
+
+
+func is_summary(ref: String) -> bool:
+	## A statement that sums up others ("I saw A, B and C at the pub ...") rather than saying one thing.
+	## (A plain account of someone's whereabouts also has the exact account behind it, but it is a
+	## statement in its own right, with its own verdict.)
+	var it := item(ref)
+	if it.get("members", []).is_empty():
+		return false
+	var rel = package.get("relevance", {})
+	return typeof(rel) != TYPE_DICTIONARY or not rel.get("items", {}).has(ref)
 
 
 func check(eid: String) -> Dictionary:
@@ -255,6 +283,9 @@ func check(eid: String) -> Dictionary:
 	if mode() != "hobby":
 		return {"op": "check", "error": "Checks are part of Hobby Detective mode."}
 	if not checkable(eid):
+		var e := entry(eid)
+		if not e.is_empty() and e["ref"] != null and is_summary(String(e["ref"])):
+			return {"op": "check", "error": "That sums up several statements. Ask them to tell you more, then check the statements one by one."}
 		return {"op": "check", "error": "Only statements, evidence and records can be checked."}
 	if state["checks"].has(eid):
 		var prev: Dictionary = state["checks"][eid]
@@ -281,14 +312,18 @@ func note(text: String, time = null) -> String:
 
 
 # --------------------------------------------------------------------------- questioning
-func ask(rid: String, topic: String, press := false) -> Dictionary:
+func ask(rid: String, topic: String, press := false, follow := "") -> Dictionary:
+	## follow: "" for the question itself, "more" for "tell me more", "earlier" for "and before that?".
 	if is_closed():
 		return {"op": "ask", "error": "closed"}
 	var r := resident(rid)
 	if r.is_empty():
 		return {"op": "ask", "error": "No resident %s." % rid}
-	var res := {"op": "ask", "speaker": rid, "topic": topic, "pressed": press, "dead": false, "lines": [],
-			"goodwill": null, "can_press": false, "followups": []}
+	if (follow != "" and not FOLLOWS.has(follow)) or (follow != "" and press):
+		return {"op": "ask", "error": "Unknown follow-up %s." % follow}
+	var res := {"op": "ask", "speaker": rid, "topic": topic, "pressed": press, "follow": follow, "dead": false,
+			"lines": [], "goodwill": null, "can_press": false, "can_more": false, "can_earlier": false,
+			"followups": []}
 	if r["condition"] == "deceased":
 		res["dead"] = true
 		res["lines"] = [{"text": "%s is dead." % r["first"], "notes": []}]
@@ -300,7 +335,7 @@ func ask(rid: String, topic: String, press := false) -> Dictionary:
 	if not valid:
 		return {"op": "ask", "error": "Unknown topic %s." % topic}
 	var followups := []
-	for line in _answer(rid, topic, press):
+	for line in _answer(rid, topic, press, follow):
 		var ids := []
 		for it in line[1]:
 			ids.append(record("S", it["key"], "%s: \"%s\"" % [r["first"], it["text"]], "statement", it["time"], rid))
@@ -310,12 +345,13 @@ func ask(rid: String, topic: String, press := false) -> Dictionary:
 		res["lines"].append({"text": line[0], "notes": ids})
 	res["goodwill"] = int(state["goodwill"][rid])
 	res["can_press"] = not state["pressed"][rid].has(topic) and int(state["goodwill"][rid]) > 0
+	res.merge(follow_ups(rid, topic), true)
 	followups.sort()
 	res["followups"] = followups
 	return res
 
 
-func _answer(rid: String, topic: String, press: bool) -> Array:
+func _answer(rid: String, topic: String, press: bool, follow: String) -> Array:
 	## [[text, [items behind it]], ...] - dialogue.answer() in Python.
 	var t = data["testimony"].get(rid)
 	if t == null:
@@ -324,6 +360,8 @@ func _answer(rid: String, topic: String, press: bool) -> Array:
 		state["goodwill"][rid] = int(t["goodwill"])
 	if not state["pressed"].has(rid):
 		state["pressed"][rid] = []
+	if not state["earlier"].has(rid):
+		state["earlier"][rid] = []
 	var pressed: Array = state["pressed"][rid]
 	if press:
 		if pressed.has(topic):
@@ -332,37 +370,94 @@ func _answer(rid: String, topic: String, press: bool) -> Array:
 			return [[WORN_OUT, []]]
 		state["goodwill"][rid] = int(state["goodwill"][rid]) - 1
 		pressed.append(topic)
+	var earlier: Array = state["earlier"][rid]
+	if follow == "earlier" and not earlier.has(topic) and not ALL_TIMES.has(topic):
+		earlier.append(topic)
+	var view := view_of(rid, topic)
 	var allow_guarded := pressed.has(topic)
-	var items := []
-	for it in t["items"]:
-		if it["topics"].has(topic):
-			items.append(it)
 	var shown := []
 	var hidden := []
-	for it in items:
-		if allow_guarded or not it["guarded"]:
-			shown.append(it)
-		elif it["guarded"]:
-			hidden.append(it)
+	if follow == "more":
+		for it in view["behind"]:
+			if not state["by_ref"].has(it["key"]):
+				shown.append(it)
+	else:
+		var era := "earlier" if follow == "earlier" and not ALL_TIMES.has(topic) else "recent"
+		for it in view["front"]:
+			if not ALL_TIMES.has(topic) and _era(it) != era:
+				continue
+			if allow_guarded or not it["guarded"]:
+				shown.append(it)
+			else:
+				hidden.append(it)
 	shown.sort_custom(_item_before)
 	var lines := []
 	if shown.is_empty():
-		if t["evasive_topics"].has(topic) or not hidden.is_empty():
+		if follow == "more":
+			lines.append([NOTHING_TO_ADD, []])
+		elif follow == "earlier":
+			lines.append([EVASIVE[t["style"]] if not hidden.is_empty() else NOTHING_EARLIER, []])
+		elif t["evasive_topics"].has(topic) or not hidden.is_empty():
 			lines.append([EVASIVE[t["style"]], []])
+		elif not view["earlier"].is_empty():
+			lines.append([NOTHING_LATELY, []])
 		else:
 			lines.append([NO_KNOWLEDGE, []])
 	for g in _group(shown):
 		lines.append(g)
 	if not hidden.is_empty() and HESITATE[t["style"]] != "":
 		lines.append([HESITATE[t["style"]], []])
-	if press and hidden.is_empty() and allow_guarded:
+	if press and allow_guarded:
 		var any_guarded := false
-		for it in items:
-			if it["guarded"]:
+		for it in t["items"]:
+			if it["topics"].has(topic) and it["guarded"]:
 				any_guarded = true
 		if not any_guarded:
 			lines.append([NOTHING_MORE, []])
 	return lines
+
+
+static func _era(it) -> String:
+	return String(it.get("era", "recent"))
+
+
+func view_of(rid: String, topic: String) -> Dictionary:
+	## What this person could tell on a topic right now: the statements in front (told when asked), those
+	## behind summaries already within reach, and the ones further back (dialogue.view_of in Python).
+	var t = data["testimony"].get(rid)
+	var out := {"front": [], "behind": [], "earlier": []}
+	if t == null:
+		return out
+	var summaries := {}
+	for it in t["items"]:
+		if not it.get("members", []).is_empty():
+			summaries[it["key"]] = it
+	var pressed: Array = state["pressed"].get(rid, [])
+	var all_times: bool = ALL_TIMES.has(topic)
+	var reach_earlier: bool = all_times or state["earlier"].get(rid, []).has(topic)
+	for it in t["items"]:
+		if not it["topics"].has(topic):
+			continue
+		var s = summaries.get(it.get("in", ""))
+		if s != null and s["topics"].has(topic):
+			if _era(s) == "recent" or reach_earlier:
+				out["behind"].append(it)
+			continue
+		out["front"].append(it)
+		if not all_times and _era(it) == "earlier" and (pressed.has(topic) or not it["guarded"]):
+			out["earlier"].append(it)
+	return out
+
+
+func follow_ups(rid: String, topic: String) -> Dictionary:
+	## Which follow-up questions would get anything new (dialogue.follow_ups in Python).
+	var view := view_of(rid, topic)
+	var can_more := false
+	for it in view["behind"]:
+		if not state["by_ref"].has(it["key"]):
+			can_more = true
+	var asked_earlier: bool = state["earlier"].get(rid, []).has(topic)
+	return {"can_more": can_more, "can_earlier": not view["earlier"].is_empty() and not asked_earlier}
 
 
 func _item_before(a, b) -> bool:
@@ -404,7 +499,8 @@ func _group(items: Array) -> Array:
 			continue
 		var names := PackedStringArray()
 		for m in members:
-			names.append(m["group"]["name"])
+			if not names.has(m["group"]["name"]):
+				names.append(m["group"]["name"])
 		var joined := names[0]
 		if names.size() > 1:
 			joined = ", ".join(names.slice(0, names.size() - 1)) + " and " + names[names.size() - 1]

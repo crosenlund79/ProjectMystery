@@ -33,8 +33,8 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
     # --- testimony: one channel per independent witness
     by_speaker: dict[str, dict] = {}
     for key, a in b.audit.items():
-        if key.startswith("W-"):
-            continue
+        if key.startswith("W-") or a.get("summary"):
+            continue  # summaries repeat their members; they are not separate witnesses
         sup = a.get("supports", [])
         if "misleading" in sup:
             misleading.add((a["speaker"], key))
@@ -67,7 +67,8 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
                          "strength": strength, "needs_pressing": ch["guarded_only"]})
 
     # --- contradictions: the responsible person's lie against accurate accounts
-    lies = [k for k, a in b.audit.items() if a.get("lie") and a["speaker"] == R and not k.startswith("W-")]
+    lies = [k for k, a in b.audit.items() if a.get("lie") and a["speaker"] == R and not k.startswith("W-")
+            and not a.get("exact_of")]
     resp_witnesses = [c for c in channels if c["type"] == "witness" and c["points_to"] == "responsible"
                       and c["strength"] == "strong"]
     if lies and resp_witnesses:
@@ -136,7 +137,7 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
     statuses: dict[str, int] = {}
     mistakes: dict[str, int] = {}
     for key, a in b.audit.items():
-        if key.startswith("W-"):
+        if key.startswith("W-") or a.get("summary") or a.get("exact_of"):
             continue
         statuses[a["status"]] = statuses.get(a["status"], 0) + 1
         if a["status"] == "mistaken":
@@ -158,7 +159,9 @@ def evaluate(b: "_Builder", consent: dict, evidence: dict, records: dict) -> dic
         "eyewitnesses": sorted(set(eyewitnesses)),
         "red_herrings": len({k[0] for k in misleading}),
         "lies_by_responsible": len(lies),
-        "statements": len([k for k in b.audit if not k.startswith("W-")]),
+        "statements": len([k for k, a in b.audit.items() if not k.startswith("W-") and not a.get("summary")
+                           and not a.get("exact_of")]),
+        "summaries": len([k for k, a in b.audit.items() if a.get("summary")]),
         "withheld": len([k for k in b.audit if k.startswith("W-")]),
     }
 

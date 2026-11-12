@@ -211,6 +211,10 @@ static func _model(inv, truth: Dictionary, theory, result: Dictionary) -> Dictio
 	var found := {}
 	for e in inv.state["entries"]:
 		found[e.get("ref")] = true
+		if e.get("ref") != null:
+			# a summary you heard counts for the statements it stands for
+			for m in inv.item(String(e["ref"])).get("members", []):
+				found[m] = true
 	var place_names: Dictionary = truth.get("place_names", {})
 	for ch in truth["suitability"]["channels"]:
 		if ch["strength"] != "strong" and ch["strength"] != "hearsay":

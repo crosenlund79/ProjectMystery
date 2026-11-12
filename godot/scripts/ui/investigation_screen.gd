@@ -26,6 +26,8 @@ const QUESTIONS := {
 	"vehicles": "Anything about the vehicles, or the road?",
 	"past": "Has there been other trouble in town lately?",
 }
+## Follow-up questions after an answer (free; pressing is the one that costs patience).
+const FOLLOW_BUTTONS := {"more": "Tell me more", "earlier": "And before that?"}
 ## Short button labels for the topics (the full question is the tooltip and goes in the conversation).
 const TOPIC_BUTTONS := {
 	"whereabouts": "Where were you?",
@@ -510,6 +512,17 @@ func _talk_view() -> void:
 	panel.add_child(about)
 	if last_answer.get("speaker", "") == rid:
 		var follow := Kit.flow()
+		var last_topic := String(last_answer.get("topic", ""))
+		if last_answer.get("can_more", false):
+			var more := Kit.button(FOLLOW_BUTTONS["more"] if last_topic != "whereabouts" else "Can you be more exact?",
+					"They summed some of that up. Free: it costs no patience.", "TopicButton", "MoreButton")
+			more.pressed.connect(ask.bind(rid, last_topic, false, "more"))
+			follow.add_child(more)
+		if last_answer.get("can_earlier", false):
+			var before := Kit.button(FOLLOW_BUTTONS["earlier"],
+					"Go back before the time in question. Free: it costs no patience.", "TopicButton", "EarlierButton")
+			before.pressed.connect(ask.bind(rid, last_topic, false, "earlier"))
+			follow.add_child(before)
 		if last_answer.get("can_press", false):
 			var press := Kit.button("Press them on this", "Costs 1 patience. Someone holding back may tell you more.",
 					"DangerButton", "PressButton")
@@ -560,24 +573,28 @@ func _ask_about(rid: String, opt: OptionButton, ids: Array) -> void:
 		ask(rid, "person:" + String(ids[opt.selected]), false)
 
 
-func question_text(rid: String, topic: String, press: bool) -> String:
+func question_text(rid: String, topic: String, press: bool, follow := "") -> String:
 	if press:
 		return "I think there's more you're not telling me about that."
+	if follow == "more":
+		return "Can you be more exact?" if topic == "whereabouts" else "Tell me more about that."
+	if follow == "earlier":
+		return "And before that?"
 	if topic.begins_with("person:"):
 		return "What can you tell me about %s?" % engine.first_name(topic.substr(7))
 	return QUESTIONS.get(topic, engine.topic_label(rid, topic))
 
 
-func ask(rid: String, topic: String, press := false) -> Dictionary:
-	var res: Dictionary = town.ask(rid, topic, press)
+func ask(rid: String, topic: String, press := false, follow := "") -> Dictionary:
+	var res: Dictionary = town.ask(rid, topic, press, follow)
 	if res.has("error"):
 		app.message("You can't ask that", String(res["error"]))
 		return res
 	var dialogue: Dictionary = engine.state["ui"]["dialogue"]
 	if not dialogue.has(rid):
 		dialogue[rid] = []
-	dialogue[rid].append({"q": question_text(rid, topic, press), "topic": topic, "pressed": press,
-			"lines": res["lines"], "where": town.at()})
+	dialogue[rid].append({"q": question_text(rid, topic, press, follow), "topic": topic, "pressed": press,
+			"follow": follow, "lines": res["lines"], "where": town.at()})
 	last_answer = res
 	talking = rid
 	view = "talk"

@@ -113,8 +113,20 @@ def scripted_actions(pkg: dict, truth: dict, ending: str) -> list[dict]:
     acts.append({"op": "ask", "who": first, "topic": "window", "press": True})
     for topic in ("money", "conflicts", "rumors", "vehicles", "past"):
         acts.append({"op": "ask", "who": first, "topic": topic})
+    # follow-ups: "tell me more", "and before that?", more again (now reaching the earlier summaries),
+    # a second "more" with nothing new, and a follow-up refused while pressing
+    for r in alive[:3]:
+        for topic in ("money", "rumors", "whereabouts"):
+            acts.append({"op": "ask", "who": r["id"], "topic": topic, "follow": "more"})
+            acts.append({"op": "ask", "who": r["id"], "topic": topic, "follow": "earlier"})
+            acts.append({"op": "ask", "who": r["id"], "topic": topic, "follow": "more"})
+        acts.append({"op": "ask", "who": r["id"], "topic": "window", "follow": "more"})
+        acts.append({"op": "ask", "who": r["id"], "topic": "window", "follow": "more"})
+        acts.append({"op": "ask", "who": r["id"], "topic": "past", "follow": "earlier"})
     other = alive[1]["id"]
     acts.append({"op": "ask", "who": first, "topic": f"person:{other}"})
+    acts.append({"op": "ask", "who": first, "topic": f"person:{other}", "follow": "earlier"})
+    acts.append({"op": "ask", "who": first, "topic": f"person:{other}", "follow": "more"})
     for r in alive[1:4]:
         acts.append({"op": "ask", "who": r["id"], "topic": "incident", "press": True})
     if dead:
@@ -164,7 +176,7 @@ def run_python(case_dir: str, actions: list[dict]) -> list[dict]:
             op = a["op"]
             try:
                 if op == "ask":
-                    res = inv.ask_result(a["who"], a["topic"], a.get("press", False))
+                    res = inv.ask_result(a["who"], a["topic"], a.get("press", False), a.get("follow", ""))
                 elif op == "inspect_place":
                     res = inv.inspect_place_result(a["id"])
                 elif op == "inspect_vehicle":
@@ -187,6 +199,7 @@ def run_python(case_dir: str, actions: list[dict]) -> list[dict]:
                            "hints_bought": st["hints_bought"], "hint_spend": st.get("hint_spend", 0),
                            "goodwill": dict(sorted(st.get("goodwill", {}).items())),
                            "pressed": dict(sorted(st.get("pressed", {}).items())),
+                           "earlier": dict(sorted(st.get("earlier", {}).items())),
                            "concluded": st["concluded"], "revealed": st["revealed"]}
                 elif op == "submit":
                     res = inv.submit_result(a["mechanism"], a["responsible"], a["motive"], a["cites"], a["summary"])

@@ -13,8 +13,11 @@ from mystery.sim.clock import fmt
 HELP = """\
 Commands
   people                      who lives here
-  talk <name>                 question someone (pick topics by letter; 'p' + letter presses them)
-  ask <name> <topic> [press]  one-off question. topics: whereabouts window incident money
+  talk <name>                 question someone (pick topics by letter; 'p' + letter presses them,
+                              'm' + letter asks for more, 'e' + letter asks about earlier times;
+                              'more' and 'earlier' follow up the last question)
+  ask <name> <topic> [press|more|earlier]
+                              one-off question. topics: whereabouts window incident money
                               conflicts rumors vehicles about:<name>
   places                      places in town
   inspect <place|vehicle>     look around (private places need the owner's agreement)
@@ -101,8 +104,8 @@ class Repl:
         elif cmd == "talk" and args:
             self.talk(" ".join(args))
         elif cmd == "ask" and len(args) >= 2:
-            press = len(args) > 2 and args[2].lower() == "press"
-            self.say(inv.ask(args[0], args[1], press))
+            how = args[2].lower() if len(args) > 2 else ""
+            self.say(inv.ask(args[0], args[1], how == "press", how if how in ("more", "earlier") else ""))
         elif cmd == "inspect" and args:
             self.say(inv.inspect(" ".join(args)))
         elif cmd == "read" and args:
@@ -149,10 +152,11 @@ class Repl:
         topics = inv.topics(r["id"])
         letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         show = True
+        last: str | None = None
         while True:
             if show:
-                self.say(["", f"{r['first'].upper()} — ask about what? (letter; p+letter to press; ? lists topics; "
-                              "back)"])
+                self.say(["", f"{r['first'].upper()} — ask about what? (letter; p+letter to press; m+letter for "
+                              "more; e+letter for earlier; ? lists topics; back)"])
                 for i, (_tid, label) in enumerate(topics):
                     self.say(f"  {letters[i]}. {label}")
                 show = False
@@ -168,12 +172,20 @@ class Repl:
                 continue
             if not choice or choice.lower() in ("back", "done", "bye"):
                 return
-            press = len(choice) == 2 and choice[0].lower() == "p"
+            if choice.lower() in ("more", "earlier", "before"):
+                if last is None:
+                    self.say("Ask them something first.")
+                    continue
+                self.say(inv.ask(r["id"], last, False, "more" if choice.lower() == "more" else "earlier"))
+                inv.save()
+                continue
+            how = {"p": "press", "m": "more", "e": "earlier"}.get(choice[0].lower(), "") if len(choice) == 2 else ""
             letter = choice[-1].upper()
-            if letter not in letters[: len(topics)]:
+            if letter not in letters[: len(topics)] or (len(choice) == 2 and not how):
                 self.say("Pick a letter from the list.")
                 continue
-            self.say(inv.ask(r["id"], topics[letters.index(letter)][0], press))
+            last = topics[letters.index(letter)][0]
+            self.say(inv.ask(r["id"], last, how == "press", how if how != "press" else ""))
             inv.save()
 
     def submit(self) -> None:

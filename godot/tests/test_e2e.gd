@@ -84,8 +84,26 @@ func run(t_, tree_: SceneTree) -> void:
 	t.check(_find("Talk_" + target) != null, "the person who is here is not offered to talk to")
 	await _press("Talk_" + target)
 	await _press("Topic_whereabouts")
+	var asked := 1
+	if scr.last_answer.get("can_more", false):
+		# the plain account first; the exact one (every move, with times) when asked
+		t.check(_find("MoreButton") != null, "'Can you be more exact?' is not offered after a plain account")
+		var filed: int = engine.state["entries"].size()
+		await _press("MoreButton")
+		asked += 1
+		t.eq(String(scr.last_answer.get("follow", "")), "more", "the follow-up was not asked")
+		t.check(engine.state["entries"].size() > filed, "asking for more filed nothing")
+		t.check(_find("MoreButton") == null, "'more' is still offered after hearing everything")
 	await _press("Topic_window")
-	t.check(engine.state["ui"]["dialogue"].get(target, []).size() == 2, "conversation history not recorded")
+	asked += 1
+	await _press("Topic_money")
+	asked += 1
+	if _find("EarlierButton") != null:
+		await _press("EarlierButton")
+		asked += 1
+		t.eq(String(scr.last_answer.get("follow", "")), "earlier", "'And before that?' was not asked")
+		t.check(_find("EarlierButton") == null, "'And before that?' is still offered after asking it")
+	t.eq(engine.state["ui"]["dialogue"].get(target, []).size(), asked, "conversation history not recorded")
 	t.check(engine.state["entries"].size() > 0, "nothing filed in the notebook")
 	if _find("PressButton") != null:
 		await _press("PressButton")
@@ -190,6 +208,14 @@ func run(t_, tree_: SceneTree) -> void:
 	await _press("TabletNav_timeline")
 	t.check(_find("TimelineChart") != null, "timeline chart missing")
 	await _layout("tablet, timeline")
+	var earlier_box = _find("ShowEarlier")
+	if earlier_box != null:
+		earlier_box.toggled.emit(true)
+		await _frames(1)
+		t.check(scr.tablet.show_earlier, "Show earlier times did not switch on")
+		await _layout("tablet, timeline with earlier times")
+		_find("ShowEarlier").toggled.emit(false)
+		await _frames(1)
 	var timed := ""
 	for e in engine.timeline()["entries"]:
 		if engine.status_of(String(e["id"])) == "":

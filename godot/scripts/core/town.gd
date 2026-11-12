@@ -167,12 +167,12 @@ func find(rid: String) -> Dictionary:
 
 
 # --------------------------------------------------------------------------- acting where you are
-func ask(rid: String, topic: String, press := false) -> Dictionary:
+func ask(rid: String, topic: String, press := false, follow := "") -> Dictionary:
 	## Questions need the person in front of you.
 	if not is_here(rid):
 		var r: Dictionary = engine.resident(rid)
 		return {"op": "ask", "who": rid, "error": "%s isn't here." % r.get("first", "They")}
-	return engine.ask(rid, topic, press)
+	return engine.ask(rid, topic, press, follow)
 
 
 func look_around() -> Dictionary:

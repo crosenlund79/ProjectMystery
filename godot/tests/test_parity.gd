@@ -52,7 +52,7 @@ func _replay(t, pkg: Dictionary, script: Dictionary) -> void:
 static func _do(inv, a: Dictionary) -> Dictionary:
 	match String(a["op"]):
 		"ask":
-			return inv.ask(a["who"], a["topic"], bool(a.get("press", false)))
+			return inv.ask(a["who"], a["topic"], bool(a.get("press", false)), String(a.get("follow", "")))
 		"inspect_place":
 			return inv.inspect_place(a["id"])
 		"inspect_vehicle":
@@ -75,7 +75,8 @@ static func _do(inv, a: Dictionary) -> Dictionary:
 			var st: Dictionary = inv.state
 			return {"op": "state", "entries": st["entries"], "credits": st["credits"],
 					"hints_bought": st["hints_bought"], "hint_spend": st.get("hint_spend", 0),
-					"goodwill": st["goodwill"], "pressed": st["pressed"], "concluded": st["concluded"],
+					"goodwill": st["goodwill"], "pressed": st["pressed"], "earlier": st["earlier"],
+					"concluded": st["concluded"],
 					"revealed": st["revealed"]}
 		"submit":
 			return inv.submit(a["mechanism"], a["responsible"], a["motive"], a["cites"], a["summary"])

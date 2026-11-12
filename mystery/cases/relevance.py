@@ -93,7 +93,8 @@ def _root(sim, belief):
 
 
 def judge(b: "_Builder", evidence: dict, records: dict) -> dict:
-    """{ref: {"verdict", "reason", "source"}} for every statement key, trace id and record line id."""
+    """{ref: {"verdict", "reason", "source"}} for every statement key (summaries excepted), trace id and
+    record line id."""
     sim = b.sim
     web_ids = web(b)
     in_web = set(web_ids)
@@ -111,6 +112,8 @@ def judge(b: "_Builder", evidence: dict, records: dict) -> dict:
         for it in items:
             ref = it["key"]
             a = b.audit[ref]
+            if a.get("summary"):
+                continue  # a summary is checked through the statements it stands for, one by one
             belief = sim.beliefs.get(a["belief"]) if a.get("belief") else None
             claim_kind = belief.claim.kind if belief is not None else ("account" if "segments" in a else "other")
             if "segments" in a or claim_kind in WHERE_KINDS:

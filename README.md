@@ -27,8 +27,9 @@ Choose **New Case** and pick one of the 15 bundled cases, each taken from its ow
 arrive in the town square, with the town laid out as a small map. Click a building to go there, and see who is
 there:
 
-* talk to people face to face (pick a topic, follow up on names they mention, press someone who is holding
-  back);
+* talk to people face to face. People answer briefly, about the time in question, with everyday things
+  summed up. Ask them to tell you more, ask "and before that?" to go further back, follow up on names they
+  mention, or press someone who is holding back;
 * look around (private places need the owner's agreement);
 * read the record books where they are kept (the shop's ledger, the pub's bar tabs, the clinic's patient
   log, the workshop's job book);
@@ -129,9 +130,12 @@ alters any history):
 python -m mystery find-case --profile scarcity --family theft --verdict playable --export
 ```
 
-Inside a case, `help` lists the commands. The core loop is `talk <name>` (lettered topics; `p` plus a letter
-presses someone who is holding back), `inspect <place or vehicle>`, `read <ledger|tabs|clinic|workshop>`,
-`notebook`, `timeline`, `hint`, `submit` and `reveal`.
+Inside a case, `help` lists the commands. The core loop is `talk <name>`, `inspect <place or vehicle>`,
+`read <ledger|tabs|clinic|workshop>`, `notebook`, `timeline`, `hint`, `submit` and `reveal`. In `talk`, topics
+are lettered:
+* `p` plus a letter presses someone who is holding back;
+* `m` plus a letter, or `more`, asks for the details behind a summary;
+* `e` plus a letter, or `earlier`, goes back before the time in question.
 
 ```text
 CASE: The Lighter Savings Tin
@@ -144,17 +148,22 @@ The time in question: from about 07:00 on Day 23 to 07:00 on Day 25.
 
 > talk agnes
 
-AGNES — ask about what? (letter; p+letter to press; ? lists topics; back)
+AGNES — ask about what? (letter; p+letter to press; m+letter for more; e+letter for earlier; ? lists topics; back)
   A. Where they were during the time in question
   B. What they saw or heard during that time
   ...
 agnes> B
 AGNES: I saw Arvid at Mill Road around 07:15 on Day 23, heading toward the mill.  [S1]
-  I saw Greta at the grocery from about 10:00 to 11:00 on Day 23.  [S2]
-  I saw Nora at the grocery around 13:00 on Day 23.  [S3]
+  At the grocery, from about 10:00 to 13:00 on Day 23, I saw Greta and Nora, coming and going.  [S2]
   I saw Clara at the square around 17:00 on Day 23, the old blue hatchback heading toward the
-    Drover's Rest.  [S4]
-  I saw Clara, Felix and Nora at the Drover's Rest from about 19:00 to 21:00 on Day 23.  [S6-S8]
+    Drover's Rest.  [S3]
+  At the Drover's Rest, from about 19:00 to 21:00 on Day 23, I saw Clara, Felix and Nora, coming
+    and going.  [S4]
+  ...
+  (Follow up: 'more' for details.)
+agnes> more
+AGNES: I saw Greta at the grocery from about 10:00 to 11:00 on Day 23.  [S6]
+  I saw Nora at the grocery around 13:00 on Day 23.  [S7]
   ...
 ```
 
