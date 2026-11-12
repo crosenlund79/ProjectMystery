@@ -302,9 +302,13 @@ func intuition() -> Dictionary:
 	else:
 		v.add_child(Kit.label("Your intuition stirs: something you have heard doesn't add up.", "MutedLabel"))
 	toast.add_child(v)
-	toast.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	toast.position = Vector2(size.x - 420, 70)
-	toast.custom_minimum_size = Vector2(380, 0)
+	# pinned to the top right corner, under the top bar, inside the window whatever its size
+	toast.anchor_left = 1.0
+	toast.anchor_right = 1.0
+	toast.offset_left = -minf(400.0, size.x - 32.0)
+	toast.offset_right = -16.0
+	toast.offset_top = 64.0
+	toast.offset_bottom = 64.0
 	add_child(toast)
 	get_tree().create_timer(9.0 if beginner else 5.0).timeout.connect(_drop_toast.bind(toast))
 	return hit

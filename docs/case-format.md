@@ -53,10 +53,10 @@ rejects any of these keys anywhere in it: `intent`, `causes`, `status`, `lie`, `
 | Field | Contents |
 |---|---|
 | `hook` | `title`, `text`, `kind`, `place`, `window` (two minute times), `window_label`, `discovered_by`, `recent_from` |
-| `residents[]` | `id`, `name`, `first`, `occupation`, `age_group`, `household`, `home`, `condition` (`alive`/`injured`/`deceased`), `now_at` |
+| `residents[]` | `id`, `name`, `first`, `occupation`, `age_group`, `household`, `home`, `condition` (`alive`/`injured`/`deceased`), `now_at`, `role`, `demeanour` |
 | `places[]` | `id`, `name`, `kind`, `owners[]`, `allowed`, `reply`, `traces[]` (`id`, `description`); traces are empty when not allowed |
 | `vehicles[]` | `id`, `name`, `kind`, `household`, `location`, `allowed`, `reply`, `traces[]` |
-| `records{book}` | `title`, `place`, `allowed`, `reply`, `entries[]` (`id`, `time`, `text`); entries are empty when not allowed |
+| `records{book}` | `title`, `place`, `allowed`, `reply`, `entries[]` (`id`, `time`, `text`, `facts`); entries are empty when not allowed |
 | `testimony{resident}` | `goodwill` (patience), `style` (`nervous`/`smooth`), `evasive_topics[]`, `items[]` |
 | `theory_options` | `mechanisms[]` and `motives[]`, each `{id, label}` |
 | `hints[]` | `{tier, cost, text}`, cheapest first; built only from evidence the player can reach |
@@ -83,6 +83,25 @@ begins. It is `null` for the dead. This is present state that anyone in town cou
 anything about the past, and it is what the game's town uses to say who is where. Readers must accept packages
 without it (schema 0.1); the game then assumes everyone is at home. Validators reject a `now_at` that is not a
 known place.
+
+### What anyone can see (schema 0.3, optional)
+
+* `residents[].role` is the occupation's key (`mill_hand`, `grocer`, …). It chooses their work clothes.
+* `residents[].demeanour` is how they come across: `cheerful`, `easygoing`, `brisk`, `reserved` or `gruff`.
+  It comes only from sociability, stubbornness and diligence, traits that play no part in deciding to steal,
+  fight or drive drunk.
+* `places[].look`, for homes only: `{style, condition, garden, trades}`.
+  * `style` is the family's house.
+  * `condition` (`fine`, `tidy`, `plain`, `worn`) comes from the household's standing, that is the work its
+    people do (public knowledge), never from this month's debts.
+  * `garden` (`neat`, `wild`) comes from how diligent they are.
+  * `trades` are their occupations.
+* `records[].entries[].facts`: a line that names someone the book places there (a drink, a meal, a sale,
+  credit, a treatment, a repair) carries `{who, place, from, to, hedged}` at the time written down. Lines
+  about wages, takings or deliveries carry none.
+
+Readers must accept packages without these fields. The game then gives everyone a stand-in face, ordinary
+clothes and a tidy house.
 
 ### How people answer (schema 0.3)
 

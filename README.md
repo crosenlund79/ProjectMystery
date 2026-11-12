@@ -27,15 +27,29 @@ Choose **New Case** and pick one of the 15 bundled cases, each taken from its ow
 arrive in the town square, with the town laid out as a small map. Click a building to go there, and see who is
 there:
 
-* talk to people face to face. People answer briefly, about the time in question, with everyday things
-  summed up. Ask them to tell you more, ask "and before that?" to go further back, follow up on names they
-  mention, or press someone who is holding back;
+* talk to people face to face: everyone has a face of their own that reacts to what you ask (but never to
+  whether they did it). People answer briefly, about the time in question, with everyday things summed up.
+  Ask them to tell you more, ask "and before that?" to go further back, follow up on names they mention, or
+  press someone who is holding back;
 * look around (private places need the owner's agreement);
 * read the record books where they are kept (the shop's ledger, the pub's bar tabs, the clinic's patient
   log, the workshop's job book);
 * examine the vehicles where they are parked.
 
 People stay where the simulation left them, and the ones you have met are marked on the map.
+
+Choose a difficulty when you start a case:
+* **Absolute Beginner:** your detective's intuition chimes when two things you have found don't add up, and
+  shows you which two (never what to make of them). Faces are easy to read, and you can check what you mark
+  suspicious.
+* **Hobby Detective:** a quieter hint that something doesn't add up, and the same checks.
+* **Experienced Detective:** no hints and no checks. Faces give little away.
+
+The timeline's "What doesn't add up" explains each contradiction: both statements, where each puts the
+person, when they clash and by how much. It tells firm contradictions apart from uncertain sightings,
+secondhand accounts and mere differences in people's approximate times. A short opening sets the scene the
+first time you play. All pictures, the opening and the chime can be replaced with your own: see
+`godot/art/README.md`. Ten extra cases for trying the importer are in `import-test-cases/`.
 
 Press **T**, or the **Tablet** button, for your investigator's tablet: case notes, the notebook, evidence,
 everyone you have met and what they said, the timeline, which flags accounts that cannot both be true, hints,

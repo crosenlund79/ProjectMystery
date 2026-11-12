@@ -87,15 +87,33 @@ has no town, so this part has no parity fixtures. It changes where you can act, 
   * `look_around` inspects the place you are at.
   Otherwise each call delegates to the rules above unchanged, with the same results and the same notebook.
 
-## Evidence management and Hobby Detective (Godot only)
+## Evidence management, difficulty and Detective's Intuition (Godot only)
 
 * **Statuses:** `set_status(entry, status)` marks any notebook entry `suspicious`, `active` or `ignored`, and
   `""` clears it.
   * Statuses are saved with the case.
   * Ignoring only hides an entry from the default views (Review ignored shows it). Nothing is ever deleted.
-* **Mode:** each case is played as Normal Detective or Hobby Detective. The mode is chosen on the New Case
-  screen, fixed when the case starts, and saved with it.
-* **`check(entry)`, Hobby Detective only:**
+* **Difficulty (`mode`):** `beginner` (Absolute Beginner), `hobby` (Hobby Detective) or `experienced`
+  (Experienced Detective). It is chosen on the New Case screen, fixed when the case starts, and saved with
+  it. Saves and settings from before, with `normal` (Normal Detective), play as Experienced.
+* **Detective's Intuition, `intuition()`:** the game calls it when the player leaves a conversation or a place.
+  * It returns the first contradiction on the timeline (see below) that is `firm` or `document`, whose clash
+    ends at or after `hook.recent_from`, and none of whose entry pairs has been told before.
+  * It records that contradiction's pairs in `state.intuition.seen`, so a disagreement is told once and one
+    at a time. The beginner's pair is kept in `state.intuition.pair` for the notebook.
+  * It is worked out from the notebook alone, exactly as the timeline is: never from the sealed truth or the
+    relevance seals, and it never names a person.
+  * How it is shown:
+    * **Absolute Beginner:** a chime and a note naming the two entries, plus a "compare these two" card at the
+      top of the notebook.
+    * **Hobby Detective:** a quieter chime and a line that something doesn't add up.
+    * **Experienced Detective:** nothing (`intuition()` returns nothing).
+* **Faces** react to the answer just given and to the speaker's manner (`demeanour`, `style`), never to the
+  truth (scripts/core/expression.gd). Each reaction has a strength 0 to 3:
+  * an Absolute Beginner sees every change and is told it in words;
+  * a Hobby Detective sees strengths 1 and up;
+  * an Experienced Detective sees 2 and up.
+* **`check(entry)`, Absolute Beginner and Hobby Detective only:**
   * Only statements, traces and record lines can be checked, and only once marked suspicious. A summary
     cannot be checked: ask for more, then check the statements behind it one by one.
   * A check opens that one item's sealed verdict from the package (see case-format.md), never the truth.
@@ -137,18 +155,37 @@ is unaffordable: *"The next hint costs N credits; you have M."* Spent credits ar
 
 ## Timeline: `timeline()`
 
-* `entries` lists the timed entries ordered by `(time, id)`, each with the ids of the entries it conflicts with.
-* `facts` collects every `fact` of every statement entry, tagged with its entry.
-* **Conflicts** are pairs of entries that put the same person in different places at once. The margin `M` is
-  20 minutes, because witness times are only ever approximate. Same-place claims, and claims within one
-  entry, never conflict.
-  * A *moment* conflicts with a *stay* elsewhere if `stay.from + M < moment < stay.to - M`.
-  * Two stays conflict if they overlap by more than `2M`.
-  * Two moments conflict only at the same minute.
-  * Pairs are ordered by entry (prefix letter, then number), then by person.
+* `entries` lists the timed entries ordered by `(time, id)`. Each lists the ids of the entries it clashes
+  with, from every pair that is not `approximate`.
+* `facts` collects every fact of every statement entry and every cited record line (`D` entries; record lines
+  carry `facts` in the package), tagged with its entry.
+* **`contradictions`** comes from `mystery/investigate/contradictions.py` (`contradictions()` in
+  investigation.gd).
+* **Clashes:** two facts about the same person at different places, from different entries, clash as follows
+  (margin `M` = 20 minutes):
+  * a moment clashes with a stay elsewhere if `stay.from + M < moment < stay.to - M`, with depth `min(moment -
+    stay.from, stay.to - moment)`;
+  * two stays clash if they overlap by more than `2M`, with depth equal to the overlap;
+  * two moments clash only at the same minute, with depth 0.
+* **Kinds**, from what the player can see:
+  * `document`: one side is a record line, and the depth is over 30 (otherwise `approximate`);
+  * `uncertain`: either fact is hedged (a sighting in the dark);
+  * `secondhand`: either statement is hearsay (`told`);
+  * `firm`: two first-hand accounts with a depth over 60;
+  * `approximate`: anything shallower. On the bundled cases no pair of true statements clashes by more than
+    52 minutes, while half of the clashes caused by a lie go deeper than an hour.
+* **Grouping:** clashes about the same person and the same two places, within 30 minutes of each other, are
+  one disagreement. The pairs are processed in order of `(who, places, start, end, entry a, entry b)` and
+  each joins the first group that fits. A group shows its strongest pair, ranked by kind (`firm` >
+  `document` > `secondhand` > `uncertain` > `approximate`), then by the number of entries that are not
+  summaries, then by depth.
+* **Each contradiction** gives `who`, `kind`, `a`, `b`, `a_fact`, `b_fact` (place, from, to), `overlap`,
+  `depth`, `entries` and `pairs` (`[a, b, kind]`), ordered by `(overlap start, who, a, b)`.
 
-The game flags conflicts in the notebook and the timeline. They catch lies (an alibi against a sighting) and
-honest mistakes (a misremembered time) alike, and the player has to decide which is which.
+The game shows them as "What doesn't add up": the two entries, where each puts the person, when they clash,
+by how much, and what the kind means. Minor timing differences are hidden behind a switch. The reveal
+(`contradictions` in the reveal model) then says what each one really was: a lie, a mistaken identity,
+another honest mistake, or two true accounts with approximate times.
 
 ## Concluding
 

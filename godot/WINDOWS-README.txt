@@ -29,10 +29,19 @@ People answer briefly, about the time in question, and sum up everyday things. A
 them to "Tell me more" for the details, or "And before that?" to go further back. Both
 are free. Only pressing someone costs patience.
 
+Pick a difficulty on the New Case screen. As an Absolute Beginner, your detective's
+intuition chimes when two things you have found don't add up, and shows you which two.
+A Hobby Detective gets a quieter hint. An Experienced Detective gets none. The timeline's
+"What doesn't add up" explains every contradiction.
+
+Your own pictures: put an "art" folder next to ProjectMystery.exe, with files named like
+the templates but without "template_" (for example art/portraits/clara/younger_worried.png).
+They replace the game's own. The guide is godot/art/README.md in the source.
+
 Mark what you learn Suspicious, Active or Ignore (ignored things are never deleted:
-"Review ignored" brings them back). Pick "Hobby Detective" on the New Case screen to be
-able to check suspicious items: you learn whether they are connected to the incident,
-never who did it. Three wrong calls and the checks are gone.
+"Review ignored" brings them back). Absolute Beginners and Hobby Detectives can check
+suspicious items: you learn whether they are connected to the incident, never who did
+it. Three wrong calls and the checks are gone.
 
 Every case comes from a simulated town; nothing is scripted. Witnesses can be
 mistaken, can protect people, and the person responsible may lie.
