@@ -5,6 +5,7 @@ extends RefCounted
 const ArtLib = preload("res://scripts/core/art.gd")
 const CaseLibrary = preload("res://scripts/core/case_library.gd")
 const Faces = preload("res://scripts/core/expression.gd")
+const ThemeBuilder = preload("res://scripts/ui/theme_builder.gd")
 
 const ROOT := "user://test_art/"
 
@@ -14,6 +15,7 @@ func run(t, _tree) -> void:
 	_replacements(t)
 	_everyone_has_art(t)
 	_faces(t)
+	_symbols(t)
 	ArtLib.extra_roots = []
 	ArtLib.clear_cache()
 
@@ -38,6 +40,45 @@ func _templates(t) -> void:
 	t.check(ArtLib.sound("sounds/intuition") != null, "intuition chime")
 	t.check(ArtLib.texture("places/nowhere") == null, "a picture that does not exist should be null")
 	t.end()
+
+
+func _symbols(t) -> void:
+	## Every character the game writes has a glyph in the game's own fonts, not only in some system font
+	## (a browser has no system fonts for the game, so a missing symbol would show as an empty box).
+	t.begin("every character in the game's text has a glyph without system fonts")
+	var theme: Theme = ThemeBuilder.build({})
+	var fonts := [theme.default_font]
+	for v in ["MapTile", "MapTileHere", "MapTileScene", "MapTileUnvisited"]:
+		if theme.has_font("font", v):
+			fonts.append(theme.get_font("font", v))
+	var chars := {}
+	for path in _scripts("res://scripts"):
+		for line in FileAccess.get_file_as_string(path).split("\n"):
+			if line.strip_edges().begins_with("#"):
+				continue
+			for i in line.length():
+				var c := line.unicode_at(i)
+				if c > 127:
+					chars[c] = path.get_file()
+	t.check(chars.size() >= 5, "found the symbols the text uses")
+	for c in chars:
+		for f in fonts:
+			t.check(f.has_char(c), "%s (U+%04X, used in %s) has no glyph in %s" % [String.chr(c), c, chars[c],
+					f.get_class()])
+	t.end()
+
+
+static func _scripts(dir: String) -> Array:
+	var out := []
+	var d := DirAccess.open(dir)
+	if d == null:
+		return out
+	for f in d.get_files():
+		if f.ends_with(".gd"):
+			out.append(dir.path_join(f))
+	for sub in d.get_directories():
+		out.append_array(_scripts(dir.path_join(sub)))
+	return out
 
 
 static func _png(path: String, w: int, h: int, c: Color) -> void:

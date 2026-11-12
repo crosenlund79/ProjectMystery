@@ -4,6 +4,17 @@ extends RefCounted
 
 const SIZES := [16, 18, 21, 25]
 const SIZE_NAMES := ["Small", "Medium", "Large", "Extra large"]
+## The few symbols the text uses (◂ ● ○ ✓ ✗ ⚠ → ...) are not in the built-in font. Desktops find them in
+## system fonts; the web build has none, so a small subset of DejaVu Sans backs up every font here.
+const SYMBOLS := preload("res://fonts/symbols.ttf")
+
+
+## The game's text font: the engine's built-in one, with the symbol font behind it.
+static func text_font() -> Font:
+	var f := FontVariation.new()
+	f.base_font = ThemeDB.fallback_font
+	f.fallbacks = [SYMBOLS]
+	return f
 
 
 static func palette(high_contrast: bool) -> Dictionary:
@@ -33,6 +44,7 @@ static func build(settings: Dictionary) -> Theme:
 	var p := palette(hc)
 	var base: int = SIZES[clampi(int(settings.get("text_size", 1)), 0, SIZES.size() - 1)]
 	var t := Theme.new()
+	t.default_font = text_font()
 	t.default_font_size = base
 	var bw := 2 if hc else 1
 
@@ -89,6 +101,7 @@ static func build(settings: Dictionary) -> Theme:
 	serif.font_names = PackedStringArray(["Georgia", "Cambria", "Palatino Linotype", "Book Antiqua", "DejaVu Serif",
 			"Liberation Serif", "Times New Roman", "serif"])
 	serif.font_weight = 600
+	serif.fallbacks = [SYMBOLS]
 	var ink := Color("#ffffff") if hc else Color("#2a2118")
 	var accent: Color = p["accent"]
 	var soft := accent
