@@ -36,8 +36,11 @@ const MARKS := ["confirmed", "disputed", "uncertain", "inference"]
 const HINT_LABELS := {1: "Nudge", 2: "Lead", 3: "Strong hint"}
 ## Evidence management: one status per notebook entry. Ignoring hides, never deletes.
 const STATUSES := ["suspicious", "active", "ignored"]
-## Detective modes. Hobby Detective may check what they marked suspicious; Normal Detective may not.
-const MODES := ["normal", "hobby"]
+## Difficulty: Absolute Beginner and Hobby Detective may check what they marked suspicious, and get a
+## Detective's intuition when two things they have found don't add up (the beginner is shown which two);
+## Experienced Detective works it all out alone. Saves from before ("normal") play as Experienced.
+const MODES := ["beginner", "hobby", "experienced"]
+const MODE_LABELS := {"beginner": "Absolute Beginner", "hobby": "Hobby Detective", "experienced": "Experienced Detective"}
 const MAX_STRIKES := 3
 const CHECKABLE := ["statement", "trace", "record"]
 
@@ -113,8 +116,12 @@ func _normalize_state() -> void:
 	for k in ["status", "checks"]:
 		if typeof(state.get(k)) != TYPE_DICTIONARY:
 			state[k] = {}
+	if String(state.get("mode", "")) == "normal":
+		state["mode"] = "experienced"
 	if not MODES.has(String(state.get("mode", ""))):
-		state["mode"] = "normal"
+		state["mode"] = "experienced"
+	if typeof(state.get("intuition")) != TYPE_DICTIONARY:
+		state["intuition"] = {"seen": [], "pair": []}
 	state["strikes"] = int(state.get("strikes", 0))
 	if int(state.get("state_version", 1)) < 2:
 		# v1 kept the open page of the old page-based interface; places and records now live in town.
@@ -242,6 +249,10 @@ func mode() -> String:
 	return String(state["mode"])
 
 
+func can_check() -> bool:
+	return mode() == "beginner" or mode() == "hobby"
+
+
 func strikes_left() -> int:
 	return maxi(0, MAX_STRIKES - int(state["strikes"]))
 
@@ -279,8 +290,8 @@ func check(eid: String) -> Dictionary:
 	## asking again about the same item gives the same answer for free.
 	if state["concluded"]:
 		return {"op": "check", "error": "closed"}
-	if mode() != "hobby":
-		return {"op": "check", "error": "Checks are part of Hobby Detective mode."}
+	if not can_check():
+		return {"op": "check", "error": "Checks are for Absolute Beginners and Hobby Detectives."}
 	if not checkable(eid):
 		var e := entry(eid)
 		if not e.is_empty() and e["ref"] != null and is_summary(String(e["ref"])):
@@ -642,6 +653,36 @@ func _timed_less(a: Dictionary, b: Dictionary) -> bool:
 	if int(a["time"]) != int(b["time"]):
 		return int(a["time"]) < int(b["time"])
 	return String(a["id"]) < String(b["id"])
+
+
+# --------------------------------------------------------------------------- detective's intuition
+## When the player leaves a conversation or a place: a new disagreement worth the name - two first-hand
+## accounts, or a record against a statement, about the time in question - between entries already in the
+## notebook. Worked out from the notebook alone, like the timeline: never from the sealed truth, and never
+## pointing at a person. Each disagreement is told once, one at a time; Experienced Detectives get none.
+const INTUITION_KINDS := ["firm", "document"]
+
+
+func intuition() -> Dictionary:
+	## {} or {"a", "b", "who", "kind"}; remembered, so the same disagreement never comes up again.
+	if state["concluded"] or mode() == "experienced":
+		return {}
+	var seen: Array = state["intuition"]["seen"]
+	var since := recent_from()
+	for c in timeline()["contradictions"]:
+		if not INTUITION_KINDS.has(c["kind"]) or int(c["overlap"][1]) < since:
+			continue
+		var told := false
+		for p in c["pairs"]:
+			if seen.has("%s|%s" % [p[0], p[1]]):
+				told = true
+		if told:
+			continue
+		for p in c["pairs"]:
+			seen.append("%s|%s" % [p[0], p[1]])
+		state["intuition"]["pair"] = [c["a"], c["b"]]
+		return {"a": c["a"], "b": c["b"], "who": c["who"], "kind": c["kind"]}
+	return {}
 
 
 # --------------------------------------------------------------------------- contradictions

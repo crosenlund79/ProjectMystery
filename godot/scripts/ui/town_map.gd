@@ -8,6 +8,7 @@ extends Control
 
 const ThemeBuilder = preload("res://scripts/ui/theme_builder.gd")
 const Art = preload("res://scripts/ui/place_art.gd")
+const ArtLib = preload("res://scripts/core/art.gd")
 
 signal place_chosen(pid: String)
 signal person_chosen(rid: String)
@@ -157,6 +158,12 @@ func _add_tokens(p: Dictionary) -> void:
 		var parts := String(r["name"]).split(" ")
 		t.text = (parts[0].left(1) + (parts[parts.size() - 1].left(1) if parts.size() > 1 else "")).to_upper()
 		t.theme_type_variation = "PersonToken"
+		var face: Array = ArtLib.portrait(r, "neutral")
+		if face[0] != null:
+			t.icon = face[0]
+			t.expand_icon = true
+			t.text = ""
+			t.custom_minimum_size = Vector2(34, 34)
 		t.tooltip_text = "%s, %s\nSeen at %s. Click to go and talk to them." % [r["name"], r["occupation"],
 				engine.place_name(p["id"])]
 		t.focus_mode = Control.FOCUS_ALL
@@ -361,8 +368,18 @@ func _building(pid: String, k: Dictionary, art_h: float) -> void:
 	var state := tile_state(pid)
 	var dim := state == "unvisited"
 	var art := Rect2(t.position.x + 4, t.position.y + 2, t.size.x - 8, art_h - 4)
-	Art.draw_place(self, String(p["kind"]), art, k,
-			{"lit": state == "here" or (dusk and not dim), "dim": dim, "seed": hash(pid), "hc": high_contrast})
+	var layers: Array = ArtLib.place_layers(p)
+	if not layers.is_empty():
+		# the place's own picture (res://art, replaceable); greyed until visited, a touch darker at dusk
+		var tint := Color.WHITE
+		if dim:
+			tint = Color(0.5, 0.52, 0.58)
+		elif dusk and state != "here":
+			tint = Color(0.82, 0.84, 0.98)
+		ArtLib.draw_layers(self, layers, Rect2(art.position.x - 6, art.position.y - 6, art.size.x + 12, art.size.y + 8), tint)
+	else:
+		Art.draw_place(self, String(p["kind"]), art, k,
+				{"lit": state == "here" or (dusk and not dim), "dim": dim, "seed": hash(pid), "hc": high_contrast})
 	# the name sign under the building
 	var plate := Rect2(t.position.x + 3, t.position.y + art_h - 1, t.size.x - 6, t.size.y - art_h - 1)
 	var face: Color = k["plaque"]

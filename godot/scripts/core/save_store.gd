@@ -5,7 +5,8 @@ extends RefCounted
 
 ## The newest saved-state layout this build understands (Investigation.STATE_VERSION).
 const MAX_STATE_VERSION := 2
-const DEFAULT_SETTINGS := {"text_size": 1, "high_contrast": false, "fullscreen": false, "mode": "normal"}
+const DEFAULT_SETTINGS := {"text_size": 1, "high_contrast": false, "fullscreen": false, "mode": "beginner",
+		"intro_seen": false}
 
 var root: String
 
@@ -118,8 +119,11 @@ func load_settings() -> Dictionary:
 	out["text_size"] = clampi(int(out["text_size"]), 0, 3)
 	out["high_contrast"] = bool(out["high_contrast"])
 	out["fullscreen"] = bool(out["fullscreen"])
-	if not ["normal", "hobby"].has(String(out["mode"])):
-		out["mode"] = "normal"
+	if String(out["mode"]) == "normal":
+		out["mode"] = "experienced"  # the old Normal Detective
+	if not ["beginner", "hobby", "experienced"].has(String(out["mode"])):
+		out["mode"] = "beginner"
+	out["intro_seen"] = bool(out["intro_seen"])
 	return out
 
 

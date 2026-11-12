@@ -8,6 +8,7 @@ const Investigation = preload("res://scripts/core/investigation.gd")
 const Verdict = preload("res://scripts/core/verdict.gd")
 const Town = preload("res://scripts/core/town.gd")
 const CaseFormat = preload("res://scripts/core/case_format.gd")
+const ArtLib = preload("res://scripts/core/art.gd")
 
 
 static func run(out_path: String) -> int:
@@ -63,6 +64,19 @@ static func run(out_path: String) -> int:
 			lines.append("FAIL %s: the truth would not open after concluding" % e["case_id"])
 			continue
 		lines.append("OK %s (%d notebook entries)" % [e["case_id"], inv.state["entries"].size()])
+	# the artwork made it into the build: a face, clothes, a house, a workplace, the opening and the chime
+	for rel in ["portraits/clara/younger_neutral", "portraits/oskar/older_irritated", "clothes/nurse",
+			"houses/holm_worn", "gardens/wild", "props/mechanic", "places/mill", "places/pub_grey_heron",
+			"intro/frame_1"]:
+		if ArtLib.texture(rel) == null:
+			ok = false
+			lines.append("FAIL art missing: %s" % rel)
+	if ArtLib.lines("intro/captions").size() < 3:
+		ok = false
+		lines.append("FAIL art missing: intro/captions")
+	if ArtLib.sound("sounds/intuition") == null:
+		ok = false
+		lines.append("FAIL art missing: sounds/intuition")
 	lines.append("SMOKE %s %d cases" % ["OK" if ok else "FAILED", lib.entries.size()])
 	var text := "\n".join(lines) + "\n"
 	print(text)

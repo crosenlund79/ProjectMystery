@@ -22,6 +22,18 @@ func run(t_, tree_: SceneTree) -> void:
 	# A headless script run has a 64x64 window; lay the game out at the smallest window it allows instead.
 	_resize(Vector2(960, 640))
 	await _frames(2)
+	# --- the opening: still frames, fades, skippable; shown once
+	if main.current != "intro":
+		main.show_intro()
+		await _frames(1)
+	t.eq(main.current, "intro", "the opening is not shown on first launch")
+	t.check(_find("IntroFrame") != null and _find("IntroFrame").texture != null, "the opening has no picture")
+	t.check(String(_find("IntroCaption").text) != "", "the opening frame has no line of text")
+	await _layout("opening")
+	await _press("SkipIntro")
+	t.eq(main.current, "menu", "skipping the opening did not go to the menu")
+	t.check(main.settings.get("intro_seen", false), "the opening will play again on the next launch")
+	t.check(_find("IntroButton") != null, "the opening cannot be watched again from the menu")
 	main.saves.reset_all()
 	main.show_main_menu()
 	await _frames(1)
@@ -83,7 +95,9 @@ func run(t_, tree_: SceneTree) -> void:
 	t.eq(town.at(), target_place, "clicking a building did not walk there")
 	t.check(_find("Talk_" + target) != null, "the person who is here is not offered to talk to")
 	await _press("Talk_" + target)
+	t.check(_find("Portrait_" + target) != null, "no portrait of the person you are talking to")
 	await _press("Topic_whereabouts")
+	t.check(scr.faces.has(target), "their face did not react to the question")
 	var asked := 1
 	if scr.last_answer.get("can_more", false):
 		# the plain account first; the exact one (every move, with times) when asked
@@ -362,6 +376,51 @@ func run(t_, tree_: SceneTree) -> void:
 	s2.close_tablet()
 	main.show_main_menu()
 	await _layout("main menu, extra large text")
+
+	# --- Detective's intuition, as an Absolute Beginner, in a case where accounts clash
+	main.change_setting("text_size", 1)
+	main.change_setting("high_contrast", false)
+	_resize(Vector2(1280, 800))
+	main.change_setting("mode", "beginner")
+	var clash_case := {}
+	for e in main.library.entries:
+		if e["case_id"] == "2-crisis-60d-r10-I3":
+			clash_case = e
+	t.check(not clash_case.is_empty(), "the case used to test intuition is missing")
+	if not clash_case.is_empty():
+		main.open_case(clash_case, true)
+		await _frames(1)
+		var s3 = main.screen
+		t.eq(main.engine.mode(), "beginner", "the case did not start as an Absolute Beginner")
+		t.check(s3.chime.stream != null, "no intuition chime (art/sounds)")
+		for r in main.engine.data["residents"]:
+			if r["condition"] != "deceased":
+				for tp in ["whereabouts", "window", "incident"]:
+					main.engine.ask(r["id"], tp)
+					main.engine.ask(r["id"], tp, false, "more")
+		var away := ""
+		for p in s3.town.places():
+			if away == "" and p["id"] != s3.town.at():
+				away = p["id"]
+		s3.go_to(away)
+		await _frames(1)
+		t.check(_find("IntuitionToast") != null, "no intuition on leaving a place when accounts clash")
+		await _layout("intuition")
+		await _press("IntuitionShow")
+		t.check(s3.tablet.visible and s3.tablet.page == "notebook", "'Show me' did not open the notebook")
+		t.check(_find("IntuitionCard") != null, "the two entries to compare are not shown")
+		await _layout("tablet, intuition")
+		await _press("IntuitionDone")
+		t.check(_find("IntuitionCard") == null, "the intuition card did not go away")
+		s3.close_tablet()
+		var again: Dictionary = s3.intuition()
+		var pairs := {}
+		while not again.is_empty():
+			var key := "%s|%s" % [again["a"], again["b"]]
+			t.check(not pairs.has(key), "an intuition repeated itself")
+			pairs[key] = true
+			again = s3.intuition()
+	main.change_setting("mode", "hobby")
 
 	# every bundled town is drawn, in normal and in high-contrast colours
 	main.change_setting("text_size", 1)

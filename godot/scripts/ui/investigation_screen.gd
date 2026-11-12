@@ -14,6 +14,9 @@ const Investigation = preload("res://scripts/core/investigation.gd")
 const Town = preload("res://scripts/core/town.gd")
 const TownMap = preload("res://scripts/ui/town_map.gd")
 const PlaceArt = preload("res://scripts/ui/place_art.gd")
+const Portrait = preload("res://scripts/ui/portrait.gd")
+const Expression = preload("res://scripts/core/expression.gd")
+const ArtLib = preload("res://scripts/core/art.gd")
 const Tablet = preload("res://scripts/ui/tablet.gd")
 
 const QUESTIONS := {
@@ -56,6 +59,8 @@ var book_day := 0
 var vehicle_id := ""
 var banner := ""
 var last_answer := {}
+var faces := {}            # resident -> the face they are showing you now
+var chime: AudioStreamPlayer
 
 
 func _init(app_, engine_) -> void:
@@ -108,6 +113,10 @@ func _ready() -> void:
 	root.add_child(holder)
 	tablet = Tablet.new(self)
 	add_child(tablet)
+	chime = AudioStreamPlayer.new()
+	chime.name = "IntuitionChime"
+	chime.stream = ArtLib.sound("sounds/intuition")
+	add_child(chime)
 	refresh()
 	if engine.state["ui"].get("tablet", false):
 		open_tablet(String(engine.state["ui"].get("tablet_page", "case")))
@@ -210,11 +219,14 @@ func close_tablet() -> void:
 
 # =========================================================================== moving around
 func go_to(pid: String) -> void:
+	var leaving := town.at() != pid
 	banner = ""
 	town.go(pid)
 	view = "place"
 	app.persist()
 	refresh()
+	if leaving:
+		intuition()
 
 
 func find_person(rid: String) -> Dictionary:
@@ -257,10 +269,50 @@ func route_to_book(key: String) -> void:
 
 
 func back_to_place() -> void:
+	var was_talking := view == "talk"
 	view = "place"
 	banner = ""
 	app.persist()
 	refresh()
+	if was_talking:
+		intuition()
+
+
+# =========================================================================== detective's intuition
+func intuition() -> Dictionary:
+	## Called on leaving a conversation or a place. A beginner hears a chime and is shown the two entries
+	## worth comparing; a hobby detective only senses that something doesn't add up; experienced, nothing.
+	var hit: Dictionary = engine.intuition()
+	if hit.is_empty():
+		return hit
+	app.persist()
+	var beginner: bool = engine.mode() == "beginner"
+	if chime.stream != null:
+		chime.volume_db = 0.0 if beginner else -14.0
+		chime.play()
+	var toast := Kit.panel("Paper" if beginner else "Card")
+	toast.name = "IntuitionToast"
+	var v := Kit.vbox(6)
+	if beginner:
+		v.add_child(Kit.label("Detective's intuition", "AccentLabel"))
+		v.add_child(Kit.label("Something doesn't add up. Compare %s and %s in your notebook." % [hit["a"], hit["b"]]))
+		var show_btn := Kit.button("Show me", "Open the notebook at the two entries", "PrimaryButton", "IntuitionShow")
+		show_btn.pressed.connect(open_tablet.bind("notebook"))
+		v.add_child(show_btn)
+	else:
+		v.add_child(Kit.label("Your intuition stirs: something you have heard doesn't add up.", "MutedLabel"))
+	toast.add_child(v)
+	toast.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	toast.position = Vector2(size.x - 420, 70)
+	toast.custom_minimum_size = Vector2(380, 0)
+	add_child(toast)
+	get_tree().create_timer(9.0 if beginner else 5.0).timeout.connect(_drop_toast.bind(toast))
+	return hit
+
+
+func _drop_toast(toast: Control) -> void:
+	if is_instance_valid(toast):
+		toast.queue_free()
 
 
 # =========================================================================== where you are
@@ -275,8 +327,9 @@ func _place_view() -> void:
 		msg.name = "Banner"
 		w.add_child(msg)
 		panel.add_child(w)
-	panel.add_child(PlaceArt.View.new(String(p["kind"]), hash(pid), bool(app.settings.get("high_contrast", false)),
-			map.dusk))
+	var art = PlaceArt.View.new(String(p["kind"]), hash(pid), bool(app.settings.get("high_contrast", false)), map.dusk)
+	art.place = p
+	panel.add_child(art)
 	panel.add_child(Kit.label(cap(String(p["name"])), "PlaceTitle"))
 	panel.add_child(Kit.label("%s  ·  %s" % [TownMap.KIND_NAMES.get(p["kind"], p["kind"]), _owners_text(p["owners"])],
 			"SmallLabel"))
@@ -292,7 +345,7 @@ func _place_view() -> void:
 	for rid in here:
 		var r: Dictionary = engine.resident(rid)
 		var row := Kit.hbox(10)
-		row.add_child(medallion(r["name"]))
+		row.add_child(Portrait.new().setup(r, 52.0, String(faces.get(rid, Expression.at_rest(r)))))
 		var who := Kit.vbox(0)
 		who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		who.add_child(Kit.label(r["name"], "SignLabel"))
@@ -452,10 +505,13 @@ func talk_to(rid: String) -> void:
 	if not town.is_here(rid):
 		app.message("Not here", "%s isn't here." % engine.first_name(rid))
 		return
+	var switching := view == "talk" and talking != "" and talking != rid
 	banner = ""
 	_start_talking(rid)
 	app.persist()
 	refresh()
+	if switching:
+		intuition()
 
 
 func _start_talking(rid: String) -> void:
@@ -472,13 +528,19 @@ func _talk_view() -> void:
 	var card := Kit.panel("Card")
 	var v := Kit.vbox(4)
 	var head := Kit.hbox(12)
-	head.add_child(medallion(r["name"]))
+	var face := String(faces.get(rid, Expression.at_rest(r)))
+	head.add_child(Portrait.new().setup(r, 112.0, face))
 	var nm := Kit.label(r["name"], "PlaceTitle")
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(nm)
 	v.add_child(head)
 	var home: String = engine.place_name(r["home"])
 	v.add_child(Kit.label("%s, %s  ·  lives at %s" % [String(r["occupation"]).capitalize(), r["age_group"], home], "SmallLabel"))
+	var read := Expression.caption(r, face, engine.mode())
+	if read != "":
+		var rl := Kit.label(read, "MutedLabel")
+		rl.name = "FaceCaption"
+		v.add_child(rl)
 	var t = engine.data["testimony"].get(rid)
 	if t != null:
 		var gw := int(engine.state["goodwill"].get(rid, t["goodwill"]))
@@ -590,6 +652,9 @@ func ask(rid: String, topic: String, press := false, follow := "") -> Dictionary
 	if res.has("error"):
 		app.message("You can't ask that", String(res["error"]))
 		return res
+	var t = engine.data["testimony"].get(rid)
+	var reaction := Expression.react(engine.resident(rid), String(t["style"]) if t != null else "nervous", topic, res)
+	faces[rid] = Expression.shown(engine.resident(rid), reaction, engine.mode())
 	var dialogue: Dictionary = engine.state["ui"]["dialogue"]
 	if not dialogue.has(rid):
 		dialogue[rid] = []

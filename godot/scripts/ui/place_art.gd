@@ -339,6 +339,7 @@ static func draw_compass(ci: CanvasItem, c: Vector2, s: float, k: Dictionary, fo
 # --------------------------------------------------------------------------- a small illustration
 class View extends Control:
 	## A little scene for the side panel: the place you are at, with a strip of ground and trees.
+	var place := {}
 	var kind := "home"
 	var sd := 0
 	var high_contrast := false
@@ -354,7 +355,7 @@ class View extends Control:
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	func _ready() -> void:
-		custom_minimum_size = Vector2(0, maxf(90.0, get_theme_default_font_size() * 5.0))
+		custom_minimum_size = Vector2(0, maxf(150.0, get_theme_default_font_size() * 8.0))
 
 	func _draw() -> void:
 		var Art = load("res://scripts/ui/place_art.gd")
@@ -370,6 +371,12 @@ class View extends Control:
 		for i in range(3):
 			Art.draw_tree(self, Vector2(size.x * (0.08 + 0.07 * i), ground_y + 2), h * (0.5 + 0.12 * (i % 2)), k, sd + i)
 			Art.draw_tree(self, Vector2(size.x * (0.92 - 0.07 * i), ground_y + 2), h * (0.55 - 0.1 * (i % 2)), k, sd + i + 1)
-		Art.draw_place(self, kind, Rect2(size.x / 2.0 - w / 2.0, ground_y - h, w, h), k,
-				{"lit": true, "dim": false, "seed": sd, "hc": high_contrast})
+		var ArtLib = load("res://scripts/core/art.gd")
+		var layers: Array = ArtLib.place_layers(place) if not place.is_empty() else []
+		if not layers.is_empty():
+			var aw := minf(size.x * 0.7, (size.y - 6.0) * 1.43)
+			ArtLib.draw_layers(self, layers, Rect2(size.x / 2.0 - aw / 2.0, 4, aw, ground_y + 4), Color.WHITE)
+		else:
+			Art.draw_place(self, kind, Rect2(size.x / 2.0 - w / 2.0, ground_y - h, w, h), k,
+					{"lit": true, "dim": false, "seed": sd, "hc": high_contrast})
 		draw_rect(r, k["frame"], false, 2.0)

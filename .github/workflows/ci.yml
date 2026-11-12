@@ -82,7 +82,10 @@ jobs:
       - name: Import the project
         shell: bash
         run: |
-          "$GODOT" --headless --path godot --editor --quit-after 600 > import.log 2>&1 || true
+          "$GODOT" --headless --path godot --editor --quit-after 1500 > import.log 2>&1 || true
+          n=$(ls godot/.godot/imported/*.ctex 2>/dev/null | wc -l)
+          if [ "$n" -lt 470 ]; then "$GODOT" --headless --path godot --editor --quit-after 8000 >> import.log 2>&1 || true; fi
+          echo "imported textures: $(ls godot/.godot/imported/*.ctex 2>/dev/null | wc -l)"
           tail -n 20 import.log
 
       - name: Godot tests (case loading, rules, saves, Python parity, end-to-end UI)
@@ -139,3 +142,79 @@ jobs:
             export.log
             smoke.txt
           if-no-files-found: ignore
+
+  screens:
+    name: Godot game - screenshots and web build (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot and the web export templates
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-dl
+          key: godot-${{ env.GODOT_RELEASE }}-linux-web-v1
+
+      - name: Install Godot ${{ env.GODOT_RELEASE }}, the web templates and a virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 > /dev/null
+          dl="$HOME/godot-dl"; mkdir -p "$dl"
+          base="https://github.com/godotengine/godot/releases/download/$GODOT_RELEASE"
+          [ -f "$dl/godot.zip" ] || curl -sSL --fail -o "$dl/godot.zip" "$base/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          if [ ! -f "$dl/web/web_nothreads_release.zip" ]; then
+            curl -sSL --fail -o "$RUNNER_TEMP/t.tpz" "$base/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+            mkdir -p "$dl/web"
+            unzip -j -q "$RUNNER_TEMP/t.tpz" "templates/web_nothreads_release.zip" "templates/web_nothreads_debug.zip" "templates/version.txt" -d "$dl/web"
+            rm "$RUNNER_TEMP/t.tpz"
+          fi
+          unzip -q -o "$dl/godot.zip" -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" >> "$GITHUB_ENV"
+          tpl="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$tpl" && cp "$dl"/web/* "$tpl"/
+
+      - name: Import the project
+        run: |
+          "$GODOT" --headless --path godot --editor --quit-after 1500 > import.log 2>&1 || true
+          n=$(ls godot/.godot/imported/*.ctex 2>/dev/null | wc -l)
+          if [ "$n" -lt 470 ]; then "$GODOT" --headless --path godot --editor --quit-after 8000 >> import.log 2>&1 || true; fi
+          echo "imported textures: $(ls godot/.godot/imported/*.ctex 2>/dev/null | wc -l)"
+          tail -n 5 import.log
+
+      - name: Run the game and take screenshots (software OpenGL)
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          mkdir -p shots
+          set +e
+          timeout 300 xvfb-run -a -s "-screen 0 1600x1000x24" "$GODOT" --path godot --rendering-driver opengl3 \
+            --resolution 1280x800 -s res://tests/screenshots.gd -- --out="$PWD/shots" > shots.log 2>&1
+          set -e
+          grep -E "shot |ERROR|error" shots.log | head -60 || true
+          ls -la shots
+          test "$(ls shots/*.png | wc -l)" -ge 10
+
+      - name: Export the web build
+        run: |
+          mkdir -p build/web
+          "$GODOT" --headless --path godot --export-release "Web" ../build/web/index.html > web-export.log 2>&1 || true
+          tail -n 20 web-export.log
+          ls -la build/web
+          test -f build/web/index.html && test -f build/web/index.pck
+
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots/
+          if-no-files-found: ignore
+
+      - name: Upload the web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectMystery-web
+          path: build/web/
+          if-no-files-found: error
+

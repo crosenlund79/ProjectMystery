@@ -14,10 +14,13 @@ const Investigation = preload("res://scripts/core/investigation.gd")
 const Smoke = preload("res://scripts/core/smoke.gd")
 const InvestigationScreen = preload("res://scripts/ui/investigation_screen.gd")
 const RevealScreen = preload("res://scripts/ui/reveal_screen.gd")
+const IntroScreen = preload("res://scripts/ui/intro_screen.gd")
 
+const MODES := ["beginner", "hobby", "experienced"]
 const MODE_HELP := {
-	"normal": "Normal Detective: mark what you find suspicious, active or worth ignoring, and judge it all yourself.",
-	"hobby": "Hobby Detective: you may also check anything you have marked suspicious. Each check says whether it is connected to the incident - never who did it or whether anyone lied. Three wrong calls and the checks are gone; right ones are free.",
+	"beginner": "Absolute Beginner: when two things you have found don't add up, a chime and your detective's intuition point you to the two entries worth comparing (never to the answer). Faces are easy to read, and you may check anything you mark suspicious: three wrong calls and the checks are gone; right ones are free.",
+	"hobby": "Hobby Detective: your intuition only tells you, quietly, that something you have heard doesn't add up - finding it is up to you. You may check anything you mark suspicious (three wrong calls and they are gone).",
+	"experienced": "Experienced Detective: no hints from your intuition, no checks, and people's faces give little away. Mark what you find and judge it all yourself.",
 }
 const DIFFICULTY_HELP := {
 	"gentle": "Several people saw or heard something useful.",
@@ -51,6 +54,22 @@ func setup(root: String) -> void:
 	saves = SaveStore.new(root)
 	settings = saves.load_settings()
 	apply_settings()
+	if settings.get("intro_seen", false):
+		show_main_menu()
+	else:
+		show_intro()
+
+
+func show_intro() -> void:
+	## The opening vignette: shown once on first launch, and again from the menu on request.
+	var intro = IntroScreen.new()
+	intro.finished.connect(_intro_done)
+	_set_screen(intro, "intro")
+
+
+func _intro_done() -> void:
+	if not settings.get("intro_seen", false):
+		change_setting("intro_seen", true)
 	show_main_menu()
 
 
@@ -135,6 +154,7 @@ func show_main_menu() -> void:
 				else "No investigation in progress yet.", "ContinueButton", func(): open_case(continue_target(), false)],
 		["Load Case", "Your saved investigations, or import a case file.", "LoadCaseButton", show_load],
 		["Settings", "Text size, contrast and display.", "SettingsButton", show_settings],
+		["Opening", "Watch the opening scene again.", "IntroButton", show_intro],
 		["Quit", "Close the game. Your progress is saved.", "QuitButton", quit_game],
 	]
 	var first: Button = null
@@ -192,14 +212,14 @@ func show_new_case(filter := "all") -> void:
 	row.add_child(opt)
 	row.add_child(Kit.spacer(0))
 	row.add_child(Kit.label("Detective mode:", "", false))
-	var mode_opt := Kit.option([["Normal Detective", 0], ["Hobby Detective", 1]],
-			1 if settings.get("mode", "normal") == "hobby" else 0,
-			"Hobby Detective can check whether something they find suspicious is connected to the case (three wrong calls and the checks are gone). Normal Detective works it all out alone.")
+	var mode_opt := Kit.option([["Absolute Beginner", 0], ["Hobby Detective", 1], ["Experienced Detective", 2]],
+			maxi(0, MODES.find(String(settings.get("mode", "beginner")))),
+			"How much help you get: your detective's intuition, checks, and how easy faces are to read.")
 	mode_opt.name = "ModeOption"
 	mode_opt.item_selected.connect(_pick_mode)
 	row.add_child(mode_opt)
 	root.add_child(row)
-	root.add_child(Kit.label(MODE_HELP[String(settings.get("mode", "normal"))], "SmallLabel"))
+	root.add_child(Kit.label(MODE_HELP.get(String(settings.get("mode", "beginner")), MODE_HELP["beginner"]), "SmallLabel"))
 	var list := Kit.vbox(12)
 	for e in library.entries:
 		if filter != "all" and e["difficulty"] != filter:
@@ -353,7 +373,7 @@ func change_setting(key: String, value) -> void:
 
 # =========================================================================== cases
 func _pick_mode(index: int) -> void:
-	change_setting("mode", "hobby" if index == 1 else "normal")
+	change_setting("mode", MODES[clampi(index, 0, MODES.size() - 1)])
 	show_new_case()
 
 
@@ -369,7 +389,7 @@ func open_case(entry: Dictionary, fresh: bool) -> bool:
 	var state = null if fresh else saves.load_state(entry["case_id"])
 	engine = Investigation.new(loaded["package"], state)
 	if not engine.resumed:
-		engine.state["mode"] = String(settings.get("mode", "normal"))  # fixed for the whole case
+		engine.state["mode"] = String(settings.get("mode", "beginner"))  # fixed for the whole case
 	persist()
 	if engine.save_mismatch:
 		message("This case has changed", "This case was updated since you last played it: a newer version of Project Mystery regenerated it from its simulation. Your earlier notes belong to the old version of the case and can't be carried over, so the investigation starts afresh.")

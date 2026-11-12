@@ -23,6 +23,7 @@ func run(t, _tree) -> void:
 	_verdicts_match_the_truth(t)
 	_checks(t)
 	_summaries(t)
+	_intuition(t)
 	_spoilers(t)
 
 
@@ -75,7 +76,9 @@ func _statuses(t) -> void:
 	t.eq(again.state["entries"].size(), n, "entries lost on reload")
 	var other = Investigation.new(packages[1], null)
 	t.eq(other.state["status"].size(), 0, "statuses leaked into another case")
-	t.eq(Investigation.new(packages[0], null).mode(), "normal", "a new case is not Normal Detective by default")
+	t.eq(Investigation.new(packages[0], null).mode(), "experienced", "a case without a chosen difficulty gives no help")
+	var old_save := {"case_id": packages[0]["case_id"], "mode": "normal"}
+	t.eq(Investigation.new(packages[0], old_save).mode(), "experienced", "an old Normal Detective save")
 	t.end()
 
 
@@ -105,7 +108,7 @@ func _checks(t) -> void:
 		var inv = Investigation.new(pkg, null)
 		_gather(inv)
 		var first := String(inv.state["entries"][0]["id"])
-		t.check(inv.check(first).has("error"), "Normal Detective was allowed to check")
+		t.check(inv.check(first).has("error"), "Experienced Detective was allowed to check")
 		inv.state["mode"] = "hobby"
 		var by_verdict := {"connected": [], "unrelated": [], "uncertain": []}
 		for e in inv.state["entries"]:
@@ -192,6 +195,44 @@ func _summaries(t) -> void:
 				t.check(inv.checkable(String(inv.state["by_ref"].get(m, ""))), "a statement behind a summary cannot be checked")
 			seen += 1
 	t.check(seen > 20, "the library has too few summaries to test")
+	t.end()
+
+
+func _intuition(t) -> void:
+	t.begin("detective's intuition: new contradictions worth the name, from the notebook only, each once")
+	var before: int = Verdict.unseal_count
+	var hits := 0
+	for pkg in packages:
+		var quiet = Investigation.new(pkg, null)
+		quiet.state["mode"] = "experienced"
+		_gather(quiet)
+		t.check(quiet.intuition().is_empty(), "an Experienced Detective was given a hint")
+		var inv = Investigation.new(pkg, null)
+		inv.state["mode"] = "beginner"
+		_gather(inv)
+		var told := {}
+		var since: int = inv.recent_from()
+		for i in range(30):
+			var hit: Dictionary = inv.intuition()
+			if hit.is_empty():
+				break
+			hits += 1
+			var key := "%s|%s" % [hit["a"], hit["b"]]
+			t.check(not told.has(key), "the same intuition came twice")
+			told[key] = true
+			t.check(["firm", "document"].has(hit["kind"]), "intuition about a minor or uncertain clash")
+			t.check(not inv.entry(String(hit["a"])).is_empty() and not inv.entry(String(hit["b"])).is_empty(),
+					"intuition about something not in the notebook")
+			var found := false
+			for c in inv.timeline()["contradictions"]:
+				if c["a"] == hit["a"] and c["b"] == hit["b"]:
+					found = true
+					t.check(int(c["overlap"][1]) >= since, "intuition about a time long before the case")
+			t.check(found, "intuition that the timeline does not show")
+			t.eq(inv.state["intuition"]["pair"], [hit["a"], hit["b"]], "the beginner's highlighted pair")
+		t.check(inv.intuition().is_empty(), "intuition kept coming")
+	t.check(hits > 0, "no case in the library gave an intuition")
+	t.eq(Verdict.unseal_count, before, "intuition opened the sealed truth")
 	t.end()
 
 

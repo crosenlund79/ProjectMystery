@@ -10,6 +10,8 @@ const Kit = preload("res://scripts/ui/kit.gd")
 const Clock = preload("res://scripts/core/clock.gd")
 const TimelineChart = preload("res://scripts/ui/timeline_chart.gd")
 const Investigation = preload("res://scripts/core/investigation.gd")
+const Portrait = preload("res://scripts/ui/portrait.gd")
+const Expression = preload("res://scripts/core/expression.gd")
 
 const PAGES := [
 	["case", "Case notes", "What happened, when and where, and how far you have got"],
@@ -232,10 +234,9 @@ func _page_case() -> void:
 			engine.place_name(town.at()), engine.state["ui"]["visited"].size(), town.places().size(),
 			engine.state["goodwill"].size(), alive, engine.state["entries"].size(), counts["suspicious"], counts["active"],
 			counts["ignored"], _real(tl["contradictions"]).size()]
-	if engine.mode() == "hobby":
-		progress += "\nHobby Detective: %d of %d checks left" % [engine.strikes_left(), Investigation.MAX_STRIKES]
-	else:
-		progress += "\nNormal Detective"
+	progress += "\n" + String(Investigation.MODE_LABELS[engine.mode()])
+	if engine.can_check():
+		progress += ": %d of %d checks left" % [engine.strikes_left(), Investigation.MAX_STRIKES]
 	list.add_child(_info_card("Your progress", progress))
 	list.add_child(_info_card("How to investigate",
 			"Walk around town: click a building on the map to go there. You meet whoever is there, and the people you have seen stay marked on the map. Click one of them to go back and talk.\n\n"
@@ -243,7 +244,8 @@ func _page_case() -> void:
 			+ "People answer the way people do: about the time in question, with everyday things summed up. Ask them to tell you more for the details, ask 'and before that?' to go further back, or ask about one person in particular. Only pressing costs patience.\n\n"
 			+ "Look around each place. Record books are kept where they belong: the ledger at the shop, the bar tabs at the pub, the patient log at the clinic. Private places and their books need the owner's agreement, and a refusal can tell you something too.\n\n"
 			+ "Sort what you learn as you go: mark it Suspicious, Active, or Ignore it (ignored things are never deleted - Review ignored brings them back)."
-			+ (" As a Hobby Detective you can check anything you marked suspicious: you learn whether it is connected to the incident, never who did it or whether anyone lied. Three wrong calls and the checks are gone; right ones are free.\n\n" if engine.mode() == "hobby" else "\n\n")
+			+ (" You can check anything you marked suspicious: you learn whether it is connected to the incident, never who did it or whether anyone lied. Three wrong calls and the checks are gone; right ones are free.\n\n" if engine.can_check() else "\n\n")
+			+ ("When you leave a conversation or a place, your detective's intuition may tell you that two things you have found don't add up%s.\n\n" % (" - and which two" if engine.mode() == "beginner" else "") if engine.mode() != "experienced" else "")
 			+ "Everything you learn lands in this tablet. The timeline lines up who was where and flags accounts that cannot both be true. When you are ready, open 'Solve the case'. 'Cannot be determined' is an honest answer when the evidence is thin."))
 	content.add_child(Kit.scroll(list))
 
@@ -305,6 +307,9 @@ func _page_notebook() -> void:
 				"MutedLabel"))
 		content.add_child(note)
 	var conflicts := _conflict_map()
+	var pair: Array = engine.state["intuition"].get("pair", [])
+	if engine.mode() == "beginner" and pair.size() == 2:
+		content.add_child(_intuition_card(pair))
 	var list := Kit.vbox(8)
 	list.name = "EntryList"
 	var shown := 0
@@ -385,6 +390,33 @@ func _set_filter(f: String) -> void:
 	show_page("notebook")
 
 
+func _intuition_card(pair: Array) -> Control:
+	## Absolute Beginner: the two entries their intuition says to compare - not what to make of them.
+	var card := Kit.panel("CardHi")
+	card.name = "IntuitionCard"
+	var v := Kit.vbox(6)
+	v.add_child(Kit.label("Your detective's intuition: compare these two", "AccentLabel"))
+	for eid in pair:
+		var e: Dictionary = engine.entry(String(eid))
+		v.add_child(Kit.label("[%s]  %s" % [eid, e.get("text", "")]))
+	var row := Kit.flow()
+	var tl := Kit.button("Line them up on the timeline", "Open the timeline", "TopicButton", "IntuitionTimeline")
+	tl.pressed.connect(show_page.bind("timeline"))
+	row.add_child(tl)
+	var done := Kit.button("Got it", "Put this away", "TopicButton", "IntuitionDone")
+	done.pressed.connect(_intuition_done)
+	row.add_child(done)
+	v.add_child(row)
+	card.add_child(v)
+	return card
+
+
+func _intuition_done() -> void:
+	engine.state["intuition"]["pair"] = []
+	app.persist()
+	show_page("notebook")
+
+
 func _entry_card(e: Dictionary, conflicts: Array) -> Control:
 	var eid := String(e["id"])
 	var card := Kit.panel(STATUS_CARDS.get(engine.status_of(eid), "Paper" if e["source"] == "note" else "Card"))
@@ -406,6 +438,9 @@ func _entry_card(e: Dictionary, conflicts: Array) -> Control:
 	head.add_child(opt)
 	v.add_child(head)
 	v.add_child(Kit.label(String(e["text"])))
+	if engine.mode() == "beginner" and engine.state["intuition"].get("pair", []).has(eid):
+		v.add_child(Kit.label("Your intuition says to compare this with %s." % ", ".join(PackedStringArray(
+				engine.state["intuition"]["pair"].filter(func(x): return x != eid))), "AccentLabel"))
 	if e["ref"] != null and engine.is_summary(String(e["ref"])):
 		v.add_child(Kit.label("This sums up several things they told you. Ask them to tell you more for the details.",
 				"MutedLabel"))
@@ -430,7 +465,7 @@ func _status_row(eid: String) -> Control:
 		var r := Kit.button("Restore", "Bring it back into play", "PrimaryButton", "Restore_" + eid)
 		r.pressed.connect(set_status.bind(eid, ""))
 		row.add_child(r)
-	if engine.mode() == "hobby" and engine.checkable(eid):
+	if engine.can_check() and engine.checkable(eid):
 		var done = engine.state["checks"].get(eid)
 		if done != null:
 			row.add_child(verdict_label(eid, String(done["verdict"]), String(done["reason"])))
@@ -511,13 +546,14 @@ func check(eid: String) -> Dictionary:
 func _refresh_mode_label() -> void:
 	if mode_label == null:
 		return
-	if engine.mode() == "hobby":
-		mode_label.text = "Hobby Detective  ·  %d of %d checks left" % [engine.strikes_left(), Investigation.MAX_STRIKES] \
-				if engine.strikes_left() > 0 else "Hobby Detective  ·  no checks left"
+	var label := String(Investigation.MODE_LABELS[engine.mode()])
+	if engine.can_check():
+		mode_label.text = label + ("  ·  %d of %d checks left" % [engine.strikes_left(), Investigation.MAX_STRIKES] \
+				if engine.strikes_left() > 0 else "  ·  no checks left")
 		mode_label.tooltip_text = "Check anything you marked suspicious: is it connected to the incident? Three wrong calls and the checks are gone; right ones are free."
 	else:
-		mode_label.text = "Normal Detective"
-		mode_label.tooltip_text = "You judge everything yourself. (Hobby Detective, chosen when starting a case, can check suspicious items.)"
+		mode_label.text = label
+		mode_label.tooltip_text = "You judge everything yourself. (Absolute Beginner and Hobby Detective, chosen when starting a case, can check suspicious items.)"
 
 
 func _set_mark(index: int, eid: String) -> void:
@@ -622,7 +658,12 @@ func _pick_person_card(rid: String) -> void:
 func _person_card(box: VBoxContainer) -> void:
 	var r: Dictionary = engine.resident(person)
 	var v := Kit.vbox(8)
-	v.add_child(Kit.label(r["name"], "HeadingLabel"))
+	var top := Kit.hbox(12)
+	top.add_child(Portrait.new().setup(r, 96.0, Expression.at_rest(r)))
+	var nm := Kit.label(r["name"], "HeadingLabel")
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(nm)
+	v.add_child(top)
 	v.add_child(Kit.label("%s, %s  ·  lives at %s" % [String(r["occupation"]).capitalize(), r["age_group"],
 			engine.place_name(r["home"])], "MutedLabel"))
 	if r["condition"] == "deceased":
