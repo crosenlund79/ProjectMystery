@@ -11,7 +11,7 @@ const Clock = preload("res://scripts/core/clock.gd")
 const TimelineChart = preload("res://scripts/ui/timeline_chart.gd")
 const Investigation = preload("res://scripts/core/investigation.gd")
 const Portrait = preload("res://scripts/ui/portrait.gd")
-const Expression = preload("res://scripts/core/expression.gd")
+const Faces = preload("res://scripts/core/expression.gd")
 
 const PAGES := [
 	["case", "Case notes", "What happened, when and where, and how far you have got"],
@@ -659,7 +659,7 @@ func _person_card(box: VBoxContainer) -> void:
 	var r: Dictionary = engine.resident(person)
 	var v := Kit.vbox(8)
 	var top := Kit.hbox(12)
-	top.add_child(Portrait.new().setup(r, 96.0, Expression.at_rest(r)))
+	top.add_child(Portrait.new().setup(r, 96.0, Faces.at_rest(r)))
 	var nm := Kit.label(r["name"], "HeadingLabel")
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(nm)

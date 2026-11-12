@@ -416,9 +416,9 @@ func run(t_, tree_: SceneTree) -> void:
 		var again: Dictionary = s3.intuition()
 		var pairs := {}
 		while not again.is_empty():
-			var key := "%s|%s" % [again["a"], again["b"]]
-			t.check(not pairs.has(key), "an intuition repeated itself")
-			pairs[key] = true
+			var pair_key := "%s|%s" % [again["a"], again["b"]]
+			t.check(not pairs.has(pair_key), "an intuition repeated itself")
+			pairs[pair_key] = true
 			again = s3.intuition()
 	main.change_setting("mode", "hobby")
 

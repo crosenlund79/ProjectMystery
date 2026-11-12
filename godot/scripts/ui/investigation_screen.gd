@@ -15,7 +15,7 @@ const Town = preload("res://scripts/core/town.gd")
 const TownMap = preload("res://scripts/ui/town_map.gd")
 const PlaceArt = preload("res://scripts/ui/place_art.gd")
 const Portrait = preload("res://scripts/ui/portrait.gd")
-const Expression = preload("res://scripts/core/expression.gd")
+const Faces = preload("res://scripts/core/expression.gd")
 const ArtLib = preload("res://scripts/core/art.gd")
 const Tablet = preload("res://scripts/ui/tablet.gd")
 
@@ -219,7 +219,7 @@ func close_tablet() -> void:
 
 # =========================================================================== moving around
 func go_to(pid: String) -> void:
-	var leaving := town.at() != pid
+	var leaving: bool = town.at() != pid
 	banner = ""
 	town.go(pid)
 	view = "place"
@@ -345,7 +345,7 @@ func _place_view() -> void:
 	for rid in here:
 		var r: Dictionary = engine.resident(rid)
 		var row := Kit.hbox(10)
-		row.add_child(Portrait.new().setup(r, 52.0, String(faces.get(rid, Expression.at_rest(r)))))
+		row.add_child(Portrait.new().setup(r, 52.0, String(faces.get(rid, Faces.at_rest(r)))))
 		var who := Kit.vbox(0)
 		who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		who.add_child(Kit.label(r["name"], "SignLabel"))
@@ -528,7 +528,7 @@ func _talk_view() -> void:
 	var card := Kit.panel("Card")
 	var v := Kit.vbox(4)
 	var head := Kit.hbox(12)
-	var face := String(faces.get(rid, Expression.at_rest(r)))
+	var face := String(faces.get(rid, Faces.at_rest(r)))
 	head.add_child(Portrait.new().setup(r, 112.0, face))
 	var nm := Kit.label(r["name"], "PlaceTitle")
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -536,7 +536,7 @@ func _talk_view() -> void:
 	v.add_child(head)
 	var home: String = engine.place_name(r["home"])
 	v.add_child(Kit.label("%s, %s  ·  lives at %s" % [String(r["occupation"]).capitalize(), r["age_group"], home], "SmallLabel"))
-	var read := Expression.caption(r, face, engine.mode())
+	var read := Faces.caption(r, face, engine.mode())
 	if read != "":
 		var rl := Kit.label(read, "MutedLabel")
 		rl.name = "FaceCaption"
@@ -653,8 +653,8 @@ func ask(rid: String, topic: String, press := false, follow := "") -> Dictionary
 		app.message("You can't ask that", String(res["error"]))
 		return res
 	var t = engine.data["testimony"].get(rid)
-	var reaction := Expression.react(engine.resident(rid), String(t["style"]) if t != null else "nervous", topic, res)
-	faces[rid] = Expression.shown(engine.resident(rid), reaction, engine.mode())
+	var reaction := Faces.react(engine.resident(rid), String(t["style"]) if t != null else "nervous", topic, res)
+	faces[rid] = Faces.shown(engine.resident(rid), reaction, engine.mode())
 	var dialogue: Dictionary = engine.state["ui"]["dialogue"]
 	if not dialogue.has(rid):
 		dialogue[rid] = []

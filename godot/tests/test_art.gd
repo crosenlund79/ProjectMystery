@@ -4,7 +4,7 @@ extends RefCounted
 
 const ArtLib = preload("res://scripts/core/art.gd")
 const CaseLibrary = preload("res://scripts/core/case_library.gd")
-const Expression = preload("res://scripts/core/expression.gd")
+const Faces = preload("res://scripts/core/expression.gd")
 
 const ROOT := "user://test_art/"
 
@@ -127,15 +127,15 @@ func _faces(t) -> void:
 	t.begin("faces: react to the conversation and the person's manner; harder difficulties show less")
 	var calm := {"id": "a", "first": "Ana", "demeanour": "cheerful", "condition": "alive"}
 	var pressed := {"pressed": true, "lines": [{"text": "I don't know anything about that.", "notes": []}]}
-	t.eq(Expression.react(calm, "nervous", "money", pressed), ["uneasy", 3], "a nervous person pressed")
-	t.eq(Expression.react(calm, "smooth", "money", pressed)[0], "guarded", "a smooth person pressed")
+	t.eq(Faces.react(calm, "nervous", "money", pressed), ["uneasy", 3], "a nervous person pressed")
+	t.eq(Faces.react(calm, "smooth", "money", pressed)[0], "guarded", "a smooth person pressed")
 	var owes := {"pressed": false, "lines": [{"text": "I'm behind on paying Felix back — 40 crowns.", "notes": ["S1"]}]}
-	t.eq(Expression.react(calm, "nervous", "money", owes), ["worried", 1], "their own money troubles")
+	t.eq(Faces.react(calm, "nervous", "money", owes), ["worried", 1], "their own money troubles")
 	var plain := {"pressed": false, "lines": [{"text": "I don't know anything about that.", "notes": []}]}
-	t.eq(Expression.react(calm, "nervous", "vehicles", plain), ["content", 0], "nothing in particular")
-	t.eq(Expression.shown(calm, ["worried", 1], "beginner"), "worried", "a beginner sees small reactions")
-	t.eq(Expression.shown(calm, ["worried", 1], "experienced"), "content", "an experienced detective does not")
-	t.eq(Expression.shown(calm, ["uneasy", 3], "experienced"), "uneasy", "strong reactions show to everyone")
-	t.check(Expression.caption(calm, "worried", "beginner") != "", "a beginner is told what a face shows")
-	t.eq(Expression.caption(calm, "worried", "hobby"), "", "only a beginner is told in words")
+	t.eq(Faces.react(calm, "nervous", "vehicles", plain), ["content", 0], "nothing in particular")
+	t.eq(Faces.shown(calm, ["worried", 1], "beginner"), "worried", "a beginner sees small reactions")
+	t.eq(Faces.shown(calm, ["worried", 1], "experienced"), "content", "an experienced detective does not")
+	t.eq(Faces.shown(calm, ["uneasy", 3], "experienced"), "uneasy", "strong reactions show to everyone")
+	t.check(Faces.caption(calm, "worried", "beginner") != "", "a beginner is told what a face shows")
+	t.eq(Faces.caption(calm, "worried", "hobby"), "", "only a beginner is told in words")
 	t.end()
