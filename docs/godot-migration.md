@@ -117,6 +117,15 @@ Detective mode, a suspicious statement, trace or record line can be checked agai
 verdict, with three strikes for wrong calls. Relevance comes from the simulation's causal record; see
 investigation-rules.md.
 
+**Making deductions click.** Contradictions are grouped and classified by what the player can see (firm,
+document, uncertain sighting, secondhand, approximate times), and explained in full on the timeline. Record
+lines that name someone join the timeline. Detective's Intuition (Absolute Beginner and Hobby Detective) points
+out new firm contradictions when the player leaves a conversation or a place. Faces react to the conversation,
+never to guilt. Houses show standing, gardens and trades; workplaces have their own look. A short opening
+plays once. All artwork lives in `godot/art` as replaceable `template_*` files (`scripts/core/art.gd`, guide in
+`godot/art/README.md`), drawn in code by `tools/art`. The bundled library is pinned to its 15 cases.
+`import-test-cases/` holds ten more for testing the importer. They are not part of the game.
+
 **Conversation.** People answer the way people talk: about the time in question, with everyday things summed
 up. "Tell me more" gives the details and "And before that?" goes further back; both are free. The case export
 shapes this (summaries, plain and exact accounts, `era`), and nothing is dropped: every statement can still

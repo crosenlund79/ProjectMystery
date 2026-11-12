@@ -60,6 +60,7 @@ var vehicle_id := ""
 var banner := ""
 var last_answer := {}
 var faces := {}            # resident -> the face they are showing you now
+var toast: Control = null  # the detective's intuition, while it is showing
 var chime: AudioStreamPlayer
 
 
@@ -203,6 +204,7 @@ func toggle_tablet() -> void:
 
 
 func open_tablet(page := "case") -> void:
+	_drop_toast(toast)
 	engine.state["ui"]["tablet"] = true
 	tablet_button.text = "Close tablet  (T)"
 	tablet.open(page)
@@ -290,7 +292,8 @@ func intuition() -> Dictionary:
 	if chime.stream != null:
 		chime.volume_db = 0.0 if beginner else -14.0
 		chime.play()
-	var toast := Kit.panel("Paper" if beginner else "Card")
+	_drop_toast(toast)
+	toast = Kit.panel("Paper" if beginner else "Card")
 	toast.name = "IntuitionToast"
 	var v := Kit.vbox(6)
 	if beginner:
@@ -302,21 +305,26 @@ func intuition() -> Dictionary:
 	else:
 		v.add_child(Kit.label("Your intuition stirs: something you have heard doesn't add up.", "MutedLabel"))
 	toast.add_child(v)
-	# pinned to the top right corner, under the top bar, inside the window whatever its size
-	toast.anchor_left = 1.0
-	toast.anchor_right = 1.0
-	toast.offset_left = -minf(400.0, size.x - 32.0)
-	toast.offset_right = -16.0
-	toast.offset_top = 64.0
-	toast.offset_bottom = 64.0
+	# bottom left, over the map: out of the way of the side panel and the tablet
+	toast.anchor_top = 1.0
+	toast.anchor_bottom = 1.0
+	toast.offset_left = 30.0
+	toast.offset_right = minf(430.0, size.x - 30.0)
+	toast.offset_top = -60.0
+	toast.offset_bottom = -60.0
+	toast.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	add_child(toast)
 	get_tree().create_timer(9.0 if beginner else 5.0).timeout.connect(_drop_toast.bind(toast))
 	return hit
 
 
-func _drop_toast(toast: Control) -> void:
-	if is_instance_valid(toast):
-		toast.queue_free()
+func _drop_toast(which) -> void:
+	## Takes the intuition note away (it may already be gone).
+	if not is_instance_valid(which):
+		return
+	if which == toast:
+		toast = null
+	which.queue_free()
 
 
 # =========================================================================== where you are

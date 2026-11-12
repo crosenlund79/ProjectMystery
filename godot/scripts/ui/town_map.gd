@@ -376,7 +376,10 @@ func _building(pid: String, k: Dictionary, art_h: float) -> void:
 			tint = Color(0.5, 0.52, 0.58)
 		elif dusk and state != "here":
 			tint = Color(0.82, 0.84, 0.98)
-		ArtLib.draw_layers(self, layers, Rect2(art.position.x - 6, art.position.y - 6, art.size.x + 12, art.size.y + 8), tint)
+		# the pictures leave a margin round the building: draw them half as big again, standing on the sign
+		var w := art.size.x * 1.5
+		var h := w * 0.7
+		ArtLib.draw_layers(self, layers, Rect2(art.position.x + art.size.x / 2.0 - w / 2.0, art.end.y + h * 0.1 - h, w, h), tint)
 	else:
 		Art.draw_place(self, String(p["kind"]), art, k,
 				{"lit": state == "here" or (dusk and not dim), "dim": dim, "seed": hash(pid), "hc": high_contrast})
