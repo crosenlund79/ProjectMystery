@@ -156,6 +156,11 @@ func run(t_, tree_: SceneTree) -> void:
 	t.check(_find("Check_" + said) != null, "no check offered for a suspicious statement")
 	await _press("Check_" + said)
 	t.check(engine.state["checks"].has(said), "the check was not made")
+	var answer := _close_popup()
+	t.check(answer.to_lower().contains("connected to the incident") or answer.to_lower().contains("can't be settled"),
+			"the check did not answer in a popup: '%s'" % answer)
+	for word in ["guilty", "culprit", "lied", "lying", "the truth is"]:
+		t.check(not answer.to_lower().contains(word), "the check answer talks about '%s'" % word)
 	t.check(_find("Verdict_" + said) != null, "the verdict is not shown on the card")
 	t.check(String(_find("ModeLabel").text).begins_with("Hobby Detective"), "mode not shown on the tablet")
 	await _press("Status_%s_ignored" % other)
@@ -421,6 +426,17 @@ func _find(node_name: String):
 func _frames(n: int) -> void:
 	for i in range(n):
 		await tree.process_frame
+
+
+func _close_popup() -> String:
+	## Read the open message popup and dismiss it with OK, as a player would. Returns "title | text".
+	for c in main.get_children():
+		if c is AcceptDialog and c.visible:
+			var said: String = "%s | %s" % [c.title, c.dialog_text]
+			c.hide()
+			c.confirmed.emit()
+			return said
+	return ""
 
 
 func _press(node_name: String) -> void:
