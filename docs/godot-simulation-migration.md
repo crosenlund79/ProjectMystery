@@ -152,16 +152,20 @@ reproduce them:
   and the crisis season (seed 5, 12 residents), long enough for thefts to happen in them: 4, 1 and 1 thefts,
   plus ledger mistakes, discovered losses and traces. They were pinned from the Windows run of commit d885ed1,
   after Linux had produced the same three digests, and both platforms reproduced them in CI run 33. Since
-  pilot 3B they are run with `"violence": false`, and their digests are unchanged (CI runs 37 to 43).
+  pilot 3B they are run with `"violence": false`, and their digests are unchanged (CI runs 37 to 44).
 - **The whole crime layer:** a month in the tension season (seeds 1 and 3) and the crisis season (seed 1),
-  chosen because violence happens in them: seed 1 tension holds a fight, a fall and a hit-and-run with a quiet
-  repair; seed 3 tension a fall, whose victim is found lying hurt and treated; seed 1 crisis a fight, and the clinic. Pinned from the Windows runs in
-  CI runs 38 to 42, which all agree; Linux reproduces them in runs 42 and 43.
+  chosen because violence happens in them.
+  - Seed 1 tension holds a fight, a fall found the next morning, and a driver who hits the fence on Mill Road,
+    drives on, and has the truck quietly mended the next day.
+  - Seed 3 tension holds a fall, whose victim is found lying hurt and treated.
+  - Seed 1 crisis holds a fight, treated at the clinic.
+  - They were pinned from the Windows runs in CI runs 38 to 42, which all agree. Linux reproduces them in runs
+    42 to 44.
 
 The crime switch is off by default, and the six earlier histories are byte-for-byte unchanged by Pilot 3A
 (CI runs 32 and 33). Pilot 3B draws random numbers only when violence is on, and what it adds to needs and
 decisions is zero for anyone unhurt, so the six crime-off and the three violence-off histories are unchanged by
-it (CI runs 37 to 43). That is the separate validation of each pilot's digest change.
+it (CI runs 37 to 44). That is the separate validation of each pilot's digest change.
 
 Python's random numbers are not reproduced. The two simulations follow the same rules with different random
 draws, so they are compared by their statistics, not event by event.
