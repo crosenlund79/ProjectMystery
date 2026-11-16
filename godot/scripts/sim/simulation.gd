@@ -237,7 +237,7 @@ func emit(kind: String, location: String, actors: Array, opts := {}) -> Dictiona
 	return ev
 
 
-func _seed_history() -> None:
+func _seed_history() -> void:
 	for g in meta["grudges"]:
 		emit("prior_grudge", "-", [g["a"]], {"targets": [g["b"]], "data": {"reason": g["reason"]}, "time": 0,
 				"summary": "Long-standing grudge between %s and %s: %s." % [n(g["a"]), n(g["b"]), g["reason"]]})
