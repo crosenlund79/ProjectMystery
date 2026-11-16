@@ -340,6 +340,58 @@ town is simulated meanwhile.
   are not offered again), or Case Library.
 - **If every town fails:** the reason, then Retry (the next towns) or Back.
 
+**Verified through the interface** (`tests/test_generate_ui.gd`; CI run 60: 143 Godot tests, 23,693 checks,
+all passing). The test runs the real game scene, menus and screens:
+- **The request itself:**
+  - a random seed when none is given;
+  - invalid settings refused (9 residents, an unknown season, 5 or 500 days, seed 0, no attempts);
+  - seeds wrap round after the largest;
+  - a different file already under a case's name is kept byte for byte, and the next case is offered instead.
+- **The form:**
+  - New Case keeps its difficulty filter and detective-mode choice;
+  - Generate Mystery opens with the defaults (10 residents, 60 days, no seed, 12 towns);
+  - an invalid seed is explained, and nothing starts;
+  - Back returns to New Case.
+- **Cancelling** a 60-day, 12-resident town part way:
+  - it stops at once (the day does not move on afterwards);
+  - nothing is written and no partial file is left;
+  - the screen says so and the settings are kept.
+- **No fair mystery:**
+  - a two-week normal town (seed 5, one attempt) fails, with the reason, and nothing is saved;
+  - Retry moves on to the next town (seed 6);
+  - Back returns to the settings.
+- **A mystery found** (seed 2, tension, 30 days):
+  - the first playable case of that town is found and saved, byte for byte the package pinned for that month in
+    `tests/case_golden.json`;
+  - it was judged by the truth-blind investigator and the sealed check, and holds up when played again from
+    the saved file in another folder;
+  - the generation screens never showed the culprit's name, the narrative, or the words culprit, responsible or
+    motive;
+  - no investigation was open and no town map drawn meanwhile;
+  - the progress bar rose with the days;
+  - the case is listed as generated, with its seed, in the case list.
+- **The same seed again:** the same case is recognised ("already in your case library"), not written again
+  (same bytes, same modification time), and not listed twice.
+- **Generate Another:** the next playable case of the same town is found and saved, again byte for byte as
+  pinned.
+- **Investigate:**
+  - the generated case opens in the game with the detective mode chosen on New Case;
+  - it is played through the town (walking, talking, asking), then fully by the investigator's routine through
+    the same game;
+  - the seal stays shut throughout, and the game saves it.
+- **A restart** (a new game instance on the same folder):
+  - both generated cases are still listed as generated, the imported case as imported, and no file fails to
+    load;
+  - an investigation saved in a bundled case before any generation is byte-identical;
+  - Continue resumes the generated case with its whole notebook;
+  - the theory is entered in the tablet's form and submitted. The seal opens exactly once, at the reveal, with
+    a score of 80 or more, and the closed case reopens to its truth.
+- **Responsiveness:**
+  - every request ran over several frames (8 to 57), in units of work of at most 181 ms on the CI machine;
+  - a seed-2 tension town found its first case in about 0.4 s.
+  - A default request (60 days, up to 12 towns) takes longer, since each town takes a few seconds, but in the
+    same small units.
+
 ## What waits for later pilots
 
 With pilot 4B, nothing in Python is needed any more to make or play a case. What remains is product work, not
