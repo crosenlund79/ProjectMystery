@@ -1,9 +1,12 @@
 {
- "_how": "Event-log digests of the pinned runs (tests/test_sim.gd GOLDEN_RUNS). The Windows tests and the Linux demo (tests/run_sim.gd --golden) must both reproduce them: the same seed gives the same history on every machine. 'memory off' runs are Pilot 1's histories, pinned before memory existed and unchanged by Pilot 2; 'memory on' runs are Pilot 2's, pinned from the Windows run of commit 8d67289. A deliberate change to the simulation's rules changes them; update them in the same commit and say why.",
+ "_how": "Event-log digests of the pinned runs (tests/test_sim.gd GOLDEN_RUNS). The Windows tests and the Linux demo (tests/run_sim.gd --golden) must both reproduce them: the same seed gives the same history on every machine. 'memory off' runs are Pilot 1's histories, pinned before memory existed and unchanged by Pilot 2; 'memory on' runs are Pilot 2's, pinned from the Windows run of commit 8d67289; 'crime on' runs are Pilot 3A's (a month, so that thefts happen), pinned from the Windows run of commit d885ed1, which Linux reproduced. Pilot 3A's crime switch is off by default, so the six earlier histories are unchanged by it. A deliberate change to the simulation's rules changes them; update them in the same commit and say why.",
  "seed 21, tension, 14 days, 10 residents, memory off": "67c424c622d232223550360eac32093d46f64577a4ff8932f107ce74209a9663",
  "seed 21, tension, 14 days, 10 residents, memory on": "2a4ffc6a2056184f3bb9677e0fd46a636c9d0b8bf4efa4f732577ce2af735e8a",
+ "seed 21, tension, 30 days, 10 residents, memory on, crime on": "b2c7fc6b82491420b3fd5acbfb9ef2703eab2b53862187569166a3e1098ea2e0",
  "seed 5, crisis, 14 days, 12 residents, memory off": "10552000d66241b3d977d05c6975e22d75a22cd05e0152f28e7050fe43f33710",
  "seed 5, crisis, 14 days, 12 residents, memory on": "9cfcecffd21e2a47d584f5077280069ef2373e170d3ceb59e2e2b2dd43bf012d",
+ "seed 5, crisis, 30 days, 12 residents, memory on, crime on": "5807b50886ee12ac694629ac3057a32d8633745a497462b6bdd6c31d61e939ea",
  "seed 7, normal, 14 days, 10 residents, memory off": "1ac5ecc1f2f119f143a390d9fd6d466cc75f3094c60423fac22420a86a56f032",
- "seed 7, normal, 14 days, 10 residents, memory on": "64993854813d0fe5ae4d07adde3ca4173c7662fe27803aaff77e19e636af26bb"
+ "seed 7, normal, 14 days, 10 residents, memory on": "64993854813d0fe5ae4d07adde3ca4173c7662fe27803aaff77e19e636af26bb",
+ "seed 7, scarcity, 30 days, 10 residents, memory on, crime on": "4dc7915ded57c72bd67c5ef04835b06e176cd8c4ea8e74aea2fa0562f76c35af"
 }

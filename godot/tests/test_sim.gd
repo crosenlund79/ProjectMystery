@@ -99,11 +99,30 @@ func _runs(seeds: Array, crime: bool) -> Array:
 			var counts: Dictionary = sim.events.counts()
 			print("  simulated %s seed %d%s: %d days, %d events, %d ms%s" % [profile, seed, ", crime on" if crime else "",
 					DAYS, sim.events.events.size(), Time.get_ticks_msec() - started,
-					"; %d thefts, %d losses found, %d ledger mistakes, %d accusations, %d confessions" % [
+					"; %d thefts, %d losses found, %d ledger mistakes, %d accusations, %d confessions; %s" % [
 					counts.get("theft", 0), counts.get("loss_discovered", 0), counts.get("ledger_error", 0),
-					_accusations(sim), counts.get("confession", 0)] if crime else ""])
+					_accusations(sim), counts.get("confession", 0), _theft_detail(sim)] if crime else ""])
 			runs.append({"profile": profile, "seed": seed, "sim": sim, "crime": crime})
 	return runs
+
+
+static func _theft_detail(sim) -> String:
+	## Which containers were robbed (till, tin, stock), which thefts nobody discovered, why attempts were given up.
+	var kinds := {}
+	var hidden := []
+	for inc in sim.incidents:
+		if inc["family"] != "theft":
+			continue
+		var cid: String = sim.events.by_id[inc["core_event"]]["objects"][0]
+		var kind: String = cid.split(":")[0]
+		kinds[kind] = int(kinds.get(kind, 0)) + 1
+		if inc["discovered_at"] == null:
+			hidden.append("%s Day %d" % [cid, SimClock.day_of(inc["time"])])
+	var why := {}
+	for ev in sim.events.events:
+		if ev["kind"] == "theft_aborted":
+			why[ev["data"]["why"]] = int(why.get(ev["data"]["why"], 0)) + 1
+	return "robbed %s; undiscovered %s; given up %s" % [JSON.stringify(kinds), JSON.stringify(hidden), JSON.stringify(why)]
 
 
 static func _accusations(sim) -> int:

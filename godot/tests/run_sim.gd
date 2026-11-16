@@ -252,7 +252,7 @@ func _crime(sim) -> void:
 		print("  %s %s, %s: %s %s%s" % [inc["id"], inc["family"], _when(core["time"]), core["summary"], found,
 				"; owned up to" if inc["reported_openly"] else ""])
 		var knew := {}
-		var guesses := []
+		var guessed := {}  # "holder -> subject" -> right or wrong (one line each, however often re-inferred)
 		for bid in sim.beliefs:
 			var b: Dictionary = sim.beliefs[bid]
 			var c: Dictionary = b["claim"]
@@ -263,10 +263,13 @@ func _crime(sim) -> void:
 			elif c["kind"] == "suspect" and b["source"] == "inferred":
 				var about: Dictionary = SimCheck.incident_at(sim, c)
 				if not about.is_empty() and about["id"] == inc["id"]:
-					guesses.append("%s suspects %s (%s)" % [sim.n(b["holder"]), sim.n(c["subject"]),
-							"right" if c["subject"] == inc["responsible"] else "wrong"])
+					guessed["%s suspects %s" % [sim.n(b["holder"]), sim.n(c["subject"])]] = (
+							"right" if c["subject"] == inc["responsible"] else "wrong")
 		if inc["discovered_at"] != null:
-			print("      %d people came to know of the loss; %s" % [knew.size(), "; ".join(guesses) if not guesses.is_empty()
+			var guesses := []
+			for g in guessed:
+				guesses.append("%s (%s)" % [g, guessed[g]])
+			print("      %d people came to know of the loss; %s" % [knew.size(), ", ".join(guesses) if not guesses.is_empty()
 					else "nobody suspected anyone"])
 	var counts: Dictionary = sim.events.counts()
 	print("  Accusations: %d.  Confessions: %d.  Attempts given up: %d.  Spent from hidden stashes: %d times." % [

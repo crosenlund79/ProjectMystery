@@ -210,7 +210,8 @@ func _forced_door(t) -> void:
 					"the square only hears a noise: not who, not what")
 			heard += 1
 	t.check(heard > 0, "someone on the square hears the crack of splintering wood (%d)" % heard)
-	t.check(Crime.made_by(sim, thief, door), "the thief made the trace (and so never 'notices' it)")
+	t.eq([door["created_by"], door["noticed_by"]], [forced[0]["id"], []],
+			"the trace points at the forced entry that made it; nobody has seen it yet")
 
 	var morning := SimClock.at(2, 8, 50)
 	_move(sim, grocer, "grocery", morning - 40)
