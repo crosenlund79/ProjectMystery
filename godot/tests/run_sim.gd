@@ -32,6 +32,12 @@ func _initialize() -> void:
 			out = a.substr(6)
 		elif a == "--golden":
 			golden = true
+	for path in TestSim.SCRIPTS:
+		var script = load(path)
+		if script == null or not script.can_instantiate():
+			printerr("SCRIPT ERROR: %s does not compile" % path)
+			quit(1)
+			return
 	var started := Time.get_ticks_msec()
 	var sim = Simulation.new(cfg)
 	if not sim.ok:

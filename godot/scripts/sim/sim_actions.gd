@@ -139,7 +139,7 @@ static func shop(sim, r, ta: int) -> void:
 	var staff := _staff_other_than(sim, "grocery", r.id, ta)
 	if staff.is_empty():
 		return
-	var shopped_key := "shopped:" + r.household
+	var shopped_key: String = "shopped:" + r.household
 	sim.daily[shopped_key] = int(sim.daily.get(shopped_key, 0)) + 1
 	var price: int = sim.profile["food_price"]
 	var stock: Dictionary = sim.world.containers["stock:grocery"]
@@ -414,7 +414,7 @@ static func reconcile(sim, r, x: String, ta: int) -> void:
 static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 	var target = sim.residents[x]
 	var here: String = sim.loc(r.id)
-	var pair := "argued:%s|%s" % ([r.id, x] if r.id < x else [x, r.id])
+	var pair: String = "argued:%s|%s" % ([r.id, x] if r.id < x else [x, r.id])
 	if int(sim.daily.get(pair, -100000)) >= ta - 6 * 60:
 		return  # they have only just had it out
 	sim.daily[pair] = ta

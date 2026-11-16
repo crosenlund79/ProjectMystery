@@ -17,9 +17,23 @@ const CORE := ["asleep", "share.home", "share.work", "per_resident_day.meal", "p
 ## The runs whose event-log digests are pinned in tests/sim_golden.json (also checked on Linux by run_sim.gd).
 const GOLDEN_RUNS := [{"seed": 7, "days": 14, "profile": "normal"}, {"seed": 21, "days": 14, "profile": "tension"},
 		{"seed": 5, "days": 14, "profile": "crisis", "residents": 12}]
+const SCRIPTS := ["res://scripts/sim/sim_rng.gd", "res://scripts/sim/sim_clock.gd", "res://scripts/sim/sim_config.gd",
+		"res://scripts/sim/sim_world.gd", "res://scripts/sim/sim_resident.gd", "res://scripts/sim/sim_town.gd",
+		"res://scripts/sim/sim_events.gd", "res://scripts/sim/sim_decisions.gd", "res://scripts/sim/sim_actions.gd",
+		"res://scripts/sim/simulation.gd", "res://scripts/sim/sim_check.gd"]
 
 
 func run(t, _tree) -> void:
+	t.begin("every simulation script compiles")
+	var broken := []
+	for path in SCRIPTS:
+		var script = load(path)
+		if script == null or not script.can_instantiate():
+			broken.append(path)
+	t.eq(broken, [], "scripts that do not compile")
+	t.end()
+	if not broken.is_empty():
+		return  # running a half-compiled simulation would only bury the error under thousands of others
 	_reproducible(t)
 	var runs := _runs()
 	_integrity(t, runs)
@@ -77,7 +91,7 @@ func _daily_life(t, runs: Array) -> void:
 	t.begin("people live their lives: they eat, sleep, work, shop, meet; the calendar is kept")
 	for rn in runs:
 		var sim = rn["sim"]
-		var label := "%s seed %d" % [rn["profile"], rn["seed"]]
+		var label: String = "%s seed %d" % [rn["profile"], rn["seed"]]
 		t.eq(sim.t, DAYS * SimClock.DAY, label + ": the clock did not reach the end")
 		var ate := {}
 		var paid := {}

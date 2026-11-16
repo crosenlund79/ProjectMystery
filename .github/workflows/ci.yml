@@ -221,6 +221,9 @@ jobs:
           set -e
           cat sim-demo/run.log
           echo "exit: $code"
+          if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" sim-demo/run.log; then
+            echo "::error::GDScript errors in the simulation demo"; exit 1
+          fi
           test "$code" = "0"
 
       - name: Upload the simulation demo

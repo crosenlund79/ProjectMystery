@@ -104,7 +104,7 @@ static func choose(sim, r, t: int) -> Dictionary:
 
 	# --- casual work for those without a job
 	if not r.employed and r.role != "retiree" and 8 <= h and h <= 13 and sim.business_open("mill", t):
-		var key := "oddavail:" + r.id
+		var key: String = "oddavail:" + r.id
 		if not sim.daily.has(key):
 			sim.daily[key] = 1 if sim.rng.random() < sim.profile["odd_jobs"] else 2
 		if sim.daily[key] == 1:
