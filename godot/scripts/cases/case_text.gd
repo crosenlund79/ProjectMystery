@@ -343,7 +343,7 @@ static func describe_segments(sim, rid: String, segs: Array, hazy_after = null) 
 		if outdoor and e - s < 25 and 0 < i and i < segs.size() - 1:
 			parts.append("around %s I passed through %s" % [SimClock.fmt_clock(s), sim.world.name_of(loc)])
 			continue
-		var label := "at home" if loc == home else "at " + sim.world.name_of(loc)
+		var label: String = "at home" if loc == home else "at " + String(sim.world.name_of(loc))
 		var night := ""
 		if loc == home and e - s >= 4 * 60:
 			night = ", asleep for most of it"
