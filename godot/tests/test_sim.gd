@@ -75,6 +75,7 @@ func run(t, _tree) -> void:
 	_matches_python(t, crime_runs, CRIME_REFERENCE, "crime-vs-python")
 	_violence_rate(t, crime_runs)
 	_golden(t)
+	_stall_survey()
 
 
 func _reproducible(t) -> void:
@@ -151,24 +152,51 @@ static func _economy(sim) -> String:
 
 
 @warning_ignore("integer_division")
-static func _stalled_shop(cfg: Dictionary, sim) -> String:
-	## The morning the grocery stopped selling for good, hour by hour: the grocery's staff and the grocer's
-	## household, what each planned and where they were, their household's pantry, hunger, cash and injury.
+static func _stall_day(sim) -> int:
+	## The day from which the grocery made no sale to the end of the month (at least four days before the end),
+	## or -1. Measured the same way in tools/sim_reference.py.
 	var bought := {}
 	for ev in sim.events.events:
 		if ev["kind"] == "purchase":
 			var d: int = SimClock.day_of(ev["time"])
 			bought[d] = int(bought.get(d, 0)) + 1
-	var days: int = cfg["days"]
-	var first := -1
+	var days: int = sim.config["days"]
 	for d in range(1, days - 3):
 		var none := true
 		for x in range(d, days + 1):
 			if int(bought.get(x, 0)) > 0:
 				none = false
 		if none:
-			first = d
-			break
+			return d
+	return -1
+
+
+func _stall_survey() -> void:
+	## One-off: how often the grocery stalls, over 40 towns per season, with the crime layer off and on.
+	for layer in ["off", "crime"]:
+		for profile in PROFILES:
+			var stalled := PackedStringArray()
+			var exposed := 0
+			for seed in range(1, 41):
+				var sim = Simulation.new({"seed": seed, "days": DAYS, "profile": profile, "crime": layer == "crime"}).run()
+				var sizes := PackedStringArray()
+				var two := true
+				for rid in sim.world.locations["grocery"]["staff"]:
+					var n: int = sim.households[sim.residents[rid].household].size()
+					sizes.append("%s %d" % [sim.residents[rid].role, n])
+					two = two and n >= 2
+				exposed += 1 if two else 0
+				var d := _stall_day(sim)
+				if d > 0:
+					stalled.append("seed %d from Day %d (%s)" % [seed, d, ", ".join(sizes)])
+			print("  stall survey %s %s: %d of 40 months stalled; %d towns where both grocery staff live in households of two or more; %s" % [
+					layer, profile, stalled.size(), exposed, "; ".join(stalled)])
+
+
+static func _stalled_shop(cfg: Dictionary, sim) -> String:
+	## The morning the grocery stopped selling for good, hour by hour: the grocery's staff and the grocer's
+	## household, what each planned and where they were, their household's pantry, hunger, cash and injury.
+	var first := _stall_day(sim)
 	if first < 0:
 		return "the shop never stopped selling"
 	while SimClock.is_rest_day((first - 1) * SimClock.DAY):
