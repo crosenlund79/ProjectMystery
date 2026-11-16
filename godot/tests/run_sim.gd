@@ -1,7 +1,7 @@
 ## Headless demonstration of the native town simulation (no Python, no rendering, no network):
 ##   godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal
 ##       [--residents=10] [--memory=off] [--crime] [--violence=off] [--shop-self-service=off] [--cases] [--out=<folder>]
-##       [--golden] [--generate]
+##       [--golden] [--generate [--library]]
 ## Prints the town, its people, the first day hour by hour, a line per day, the end state, the integrity
 ## checks and the event-log digest; --out writes the whole history as JSON; --golden checks the pinned
 ## digests in tests/sim_golden.json (the same check the Windows tests make); --crime turns on the whole crime layer
@@ -12,8 +12,9 @@
 ## mystery could ever be made of it, and with --out writes each case's investigation and sealed truth as JSON.
 ## --generate (Pilot 4B) makes playable cases: every candidate packaged as a .mcase, judged by the truth-blind
 ## investigator and checked against its sealed truth; with --out the playable ones go to <out>/cases and every package
-## to <out>/all; with --golden the package bytes are checked against tests/case_golden.json. Exit code 0 only if every
-## check passed.
+## to <out>/all; with --library the playable ones go to the game's own case folder (user://cases/), where the game
+## lists them beside the bundled and imported cases; with --golden the package bytes are checked against
+## tests/case_golden.json. Exit code 0 only if every check passed.
 extends SceneTree
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -36,6 +37,7 @@ func _initialize() -> void:
 	var golden := false
 	var with_cases := false
 	var generate := false
+	var library := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--seed="):
 			cfg["seed"] = int(a.substr(7))
@@ -61,6 +63,8 @@ func _initialize() -> void:
 			with_cases = true
 		elif a == "--generate":
 			generate = true
+		elif a == "--library":
+			library = true
 	for path in TestSim.SCRIPTS:
 		var script = load(path)
 		if script == null or not script.can_instantiate():
@@ -74,7 +78,7 @@ func _initialize() -> void:
 				printerr("SCRIPT ERROR: %s does not compile" % path)
 				quit(1)
 				return
-		quit(0 if _generate(cfg, out, golden) else 1)
+		quit(0 if _generate(cfg, out, golden, library) else 1)
 		return
 	var started := Time.get_ticks_msec()
 	var sim = Simulation.new(cfg)
@@ -441,12 +445,14 @@ func _cases(sim, cases: Dictionary, problems: Dictionary, out: String) -> void:
 				f.close()
 
 
-func _generate(cfg: Dictionary, out: String, golden: bool) -> bool:
+func _generate(cfg: Dictionary, out: String, golden: bool, library: bool) -> bool:
 	## Pilot 4B: from a month of the town to playable case files, judged without the truth.
 	var started := Time.get_ticks_msec()
 	var c := cfg.duplicate()
 	c["crime"] = true
 	var playable_dir := (out + "/cases/") if out != "" else ""
+	if library:
+		playable_dir = CaseGenerate.DEFAULT_OUT
 	var all_dir := (out + "/all/") if out != "" else ""
 	var got: Dictionary = CaseGenerate.generate(c, playable_dir, "", all_dir)
 	var sim = got["sim"]

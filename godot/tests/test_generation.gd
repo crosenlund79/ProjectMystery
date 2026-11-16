@@ -164,6 +164,7 @@ func _theft_rules(t) -> void:
 			[_fact("cora", "square", DAY + 11 * 60, DAY + 11 * 60)])
 	r = _solve(inv)
 	t.check(not r["ok"], "one witness was enough")
+	t.check(String(r.get("reason", "")).contains("word against word"), "one witness: %s" % r.get("reason"))
 	# a second, independent witness: proven
 	var two := inv.duplicate(true)
 	_say(two, "dan", "K5", "I saw Cora at Mill Road around 13:00 on Day 2, heading toward the Berg house.", "saw",
@@ -309,6 +310,17 @@ func _collision_rules(t) -> void:
 	two["vehicles"][1]["traces"] = [{"id": "T-X0002", "description": "The grey saloon car has a dented front bumper, a cracked headlight and flecks of white paint and wood splinters in the grille."}]
 	r = _solve(two)
 	t.check(not r["ok"], "two damaged vehicles, yet a conclusion")
+	# damage seen before the time in question, but the workshop mended it before then: the damage now is new
+	var mended := earlier.duplicate(true)
+	_line(mended, "workshop_orders", "R-workshop_orders#1", 10 * 60, "Day 1 10:00 the rust-red workshop truck (Ben Cole): straightened the front panel, replaced the headlight. Customer said: \"Clipped the fence on Mill Road.\"")
+	r = _solve(mended)
+	t.eq([r.get("responsible"), r.get("mechanism")], ["ben", "vehicle_collision"], "damage mended before, damaged again (%s)" % r.get("reason", ""))
+	# mended parts of another car in the scrap pile, from a repair before the time in question, say nothing of it
+	var scrap := _collision()
+	scrap["places"][7]["traces"] = [{"id": "T-X0003", "description": "In the workshop scrap pile: a cracked headlight unit and a bent front panel with flecks of white paint, chalked 'the grey saloon car'."}]
+	t.eq(scrap["places"][7]["id"], "workshop", "fixture: the workshop")
+	r = _solve(scrap)
+	t.eq(r.get("responsible"), "ben", "an old scrap pile read as new damage (%s)" % r.get("reason", ""))
 	t.end()
 
 

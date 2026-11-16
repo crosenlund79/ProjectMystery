@@ -1,7 +1,7 @@
 # Moving the town simulation to Godot
 
 The goal is a self-contained Godot 4 game in which the town simulation, case generation and the investigation
-all run natively, with Python retired from the active architecture. This document covers five pilots:
+all run natively, with Python retired from the active architecture. This document covers six pilots:
 
 - **Pilot 1:** residents living in a town.
 - **Pilot 2:** what they see, hear, remember and tell each other.
@@ -11,14 +11,17 @@ all run natively, with Python retired from the active architecture. This documen
   injuries and the clinic, damaged vehicles and the workshop, people found hurt, missed or dead.
 - **Pilot 4A:** case extraction: the material for an investigation (testimony, traces, records, who lets the
   investigator look where) taken from Godot's own simulated history, with the truth sealed apart.
+- **Pilot 4B:** case generation: the suitability report and hints, `.mcase` packaging, and a solvability gate.
+  A case becomes playable only if a truth-blind investigator, playing the player's view through the game's own
+  investigation engine, reaches the answer.
 
 With pilot 3B, the whole Python simulation runs natively in Godot. One rule then differs from Python on
 purpose: shop workers may serve themselves, which ends a deadlock in which the whole town stops buying food (see
 [The grocery deadlock fix](#the-grocery-deadlock-fix-a-deliberate-difference-from-python)).
 
-The existing game is unchanged: its bundled cases are still made by Python and played in Godot. Since pilot 4A,
-Godot can also derive case material from its own simulation, without Python; packaging that into playable cases
-is pilot 4B.
+The existing game is unchanged: its bundled cases are still made by Python and played in Godot. Since pilot 4B,
+Godot also makes playable cases from its own simulation, without Python. They are written as ordinary `.mcase`
+files into the player's case folder, where the game lists them beside the bundled and imported ones.
 
 ## What pilot 1 contains
 
@@ -225,17 +228,95 @@ candidate is frozen at its case start, the hour the investigator arrives. It is 
   times, wrong suspicions, loyalty, and lies by whoever has something to hide.
 - **The investigator never gets privileged knowledge.** The view has no event or belief ids, no audit field, no
   verdict and no causal link. A trace behind a refusal is not in it at all.
-- Python's case identifiers (`<seed>-<season>-<days>d-r<residents>-<incident>`), statement keys (`K0001`),
-  trace and record references (`T-…`, `R-…`), topics and vocabulary are kept, so pilot 4B can package the
-  material in the existing case format.
+- Python's statement keys (`K0001`), trace and record references (`T-…`, `R-…`), topics and vocabulary are kept,
+  so pilot 4B packages the material in the existing case format. Case identifiers follow Python's
+  (`<seed>-<season>-<days>d-r<residents>-<incident>`) behind a `godot-` prefix (since pilot 4B). Without it, a
+  Godot-made case could share an id, and a save slot, with a different, Python-made case from the same seed.
+  How residents recall things at the case start is still keyed by the unprefixed id, as in Python.
+
+## What pilot 4B adds: case generation
+
+`godot/scripts/cases/` now goes all the way from a simulated town to playable `.mcase` files, with no Python. It
+is the rest of Python's `mystery/cases`, plus a solvability gate that Python never had.
+
+| Python (`mystery/`) | Godot (`godot/scripts/cases/`) | What it does |
+| --- | --- | --- |
+| `cases/suitability.py` (`evaluate`, `exposed_lies`, `only_one_there`) | `case_suitability.gd` (`evaluate`) | **The suitability report.** The independent channels (witnesses by root, exposed lies, physical traces, record lines), the deduction routes and the verdict (obvious, playable, ambiguous, unsolvable). It is worked out from the truth (who is accurate, who lies), so it is sealed with the truth and decides nothing on its own. It feeds the difficulty label, the score of a "cannot be determined" verdict, and the reveal (channels the player missed). |
+| `cases/suitability.py` (`hints`) | `case_suitability.gd` (`hints`) | **The hint ladder** (nudge, lead, strong hint), pointing only at things the player can actually find. |
+| `cases/package.py` | `case_package.gd` | **The package.** The existing format, unchanged (`docs/case-format.md`). The truth is sealed with `sha256-ctr-xor/1`, each relevance verdict with `sha256-xor-item/1`. Everything is ASCII JSON with sorted keys, so a seed gives the same bytes on every platform. `generator.tool` is `mystery (Godot)`, and `generator.options` records the switches the town ran with. |
+| (none) | `case_solver.gd` | **The truth-blind investigator** (below). |
+| `cases/library.py` (`select_cases`, `build_library`) | `case_generate.gd` | **Generation.** It runs a town and freezes every candidate. Each candidate is packaged and read back exactly as the game reads a file, then judged. Playable cases go to the player's case folder (`user://cases/`), where the game lists them as imported cases. The bundled library, imported cases and saves are not touched. |
+
+**The solvability gate.** A candidate becomes a playable case only if all of these hold:
+1. **It is eligible.** Someone is genuinely responsible for a crime. Accidents, bookkeeping mistakes and
+   incidents owned up to on the spot are rejected first. A suspicion is never an incident.
+2. **The package validates.** It passes the game's own loader (`CaseFormat`), carries no truth in the player's
+   view, and has hints.
+3. **The truth-blind investigator solves it.** It plays a copy of the package that holds only the player's
+   view: no sealed truth, no relevance verdicts, no summary or generator. It plays through the real
+   investigation engine (`scripts/core/investigation.gd`), under the game's rules:
+   - It asks every living resident about every topic. It presses where people hesitate or dodge, as far as
+     their goodwill goes, and asks for "more" and "earlier".
+   - It looks at every place and vehicle it is allowed to, reads every book it is allowed to, and copies the
+     lines into the notebook.
+   - Then it reasons from the notebook alone (statements, traces, record lines) and from the contradictions the
+     player's own timeline shows. It either submits a theory with the entries it rests on, or says why it
+     cannot.
+   - It never buys hints or uses Hobby Detective checks, which open sealed relevance verdicts.
+4. **Only now is the seal opened**, to check the conclusion. The investigator must have named:
+   - the person really responsible;
+   - the real explanation;
+   - a motive the truth accepts.
+
+   Nothing it cited may be mistaken, or a lie other than the culprit's own, and at least one cited entry must be
+   evidence of the answer (the game's own scoring, `Verdict`).
+
+A case that fails any step is rejected, with the reason. Nothing is ever added to a case to make it solvable.
+
+**Lines of reasoning.** One logically sufficient chain is enough; channels are never counted.
+- **Theft.** Someone's own account of the time in question is proven false. The proof can be:
+  - a record (the ledger, the bar tab, ...) that puts them elsewhere;
+  - another first-hand statement of their own;
+  - two independent eyewitnesses.
+
+  One witness against one account is word against word and proves nothing: witnesses misidentify people and
+  misremember times. That person alone must be caught out. If two accounts are disproved, nothing tells the two
+  apart, and the case is rejected. The motive is the money trouble people describe (debts, credit, refused
+  loans, missed rent). Failing that, it is bad blood with the household robbed. With neither, the case is
+  rejected.
+- **Assault.** Someone who was there names the attacker: the victim ("X attacked me") or an eyewitness ("I saw
+  X attack Y"). Nobody who was there may name anyone else. The fighter's own "they started it" is self-serving
+  and does not count. The motive is one of:
+  - drink, if someone saw the attacker the worse for drink, or the tab has them at three drinks or more in the
+    hours before;
+  - money, if the quarrel was over money owed;
+  - otherwise bad blood, if a quarrel or a grudge between them is known.
+- **Collision.** One vehicle shows damage that matches what was hit (white paint and splinters for the fence; a
+  smear or a cracked windscreen for a person). The damage is seen in a trace, a sighting, the workshop's scrap
+  pile, or a repair after the time in question, and was never seen before it. One person is tied to that
+  vehicle: their own story of how it was damaged (the deer), or the workshop's repair book. The motive is panic,
+  because they drove on.
+- Rumours, "If you ask me ..." suspicions, hearsay and a vehicle glimpsed in the dark never decide anything.
+
+**Truth-blindness**, by construction and by test:
+- the investigator is given a package with no sealed truth or relevance at all;
+- the number of times the seal has been opened (`Verdict.unseal_count`) is unchanged by its work;
+- in a full game, the seal is opened only at the reveal.
 
 ## What waits for later pilots
 
-These are the boundaries. The next layer plugs into the case material pilot 4A extracts.
+With pilot 4B, nothing in Python is needed any more to make or play a case. What remains is product work, not
+migration:
+- a way for the player to ask for a new generated case (a menu entry, progress while a town runs);
+- difficulty settings;
+- more cases per month, and better ones (see the [recommendation](#next-after-pilot-4b));
+- an installer.
 
-- **Suitability, hints, case packaging and saved case generation** (`mystery/cases/suitability.py`,
-  `package.py`, `library.py`): pilot 4B.
-- **The investigation rules** already run in Godot (`scripts/core/`) and are untouched.
+**The investigation rules** run in Godot (`scripts/core/`) and are unchanged in behaviour. Two internal changes
+were made:
+- the timeline's contradiction finder can now also be called without a game in progress (static), with the
+  same results;
+- the evidence part of the score also reports how many cited entries were good and bad.
 
 ## Determinism
 
@@ -333,6 +414,30 @@ godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --
 godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --profile=tension --crime --cases --out=sim-demo
 ```
 
+- `--generate` (pilot 4B) makes playable cases from a month with the whole crime layer. For every candidate it
+  prints:
+  - whether it is playable, or where and why it was rejected;
+  - what the truth-blind investigator concluded, after how many questions, places, vehicles and books;
+  - the check against the sealed truth afterwards;
+  - the quality concerns;
+  - the package's size and SHA-256.
+
+  With `--out`, the playable cases go to `<out>/cases/` and every package (playable or not, for inspection) to
+  `<out>/all/`. With `--golden`, the package bytes are checked against `tests/case_golden.json`, and the history
+  against `tests/sim_golden.json`.
+
+```bash
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --profile=tension --generate --golden --out=sim-demo/generated
+```
+
+With `--library`, the playable cases go straight into the game's own case folder (`user://cases/`; on Windows
+`%APPDATA%\ProjectMystery\cases`). The game then lists them under New Case, beside the bundled and imported
+cases. A `.mcase` file can also be imported from Load Case.
+
+```bash
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=2 --days=30 --profile=tension --generate --library
+```
+
 CI runs these commands on Linux and uploads the results as the `simulation-demo` artifact.
 
 ```gdscript
@@ -345,8 +450,8 @@ for b in sim.memory[sim.ids[0]].beliefs:
 
 ## How it is verified
 
-`godot/tests/test_sim.gd`, `test_memory.gd`, `test_crime.gd`, `test_violence.gd`, `test_grocery.gd` and
-`test_extraction.gd` are part of the Godot test run in CI.
+`godot/tests/test_sim.gd`, `test_memory.gd`, `test_crime.gd`, `test_violence.gd`, `test_grocery.gd`,
+`test_extraction.gd` and `test_generation.gd` are part of the Godot test run in CI.
 
 ### The world (pilot 1, and still with memory on)
 

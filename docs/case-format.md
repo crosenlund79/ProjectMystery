@@ -30,8 +30,8 @@ python -m mystery validate-case path/to/*.mcase
 |---|---|---|
 | `format` | string | Always `"project-mystery-case"`. |
 | `format_version` | int | `1`. Readers reject versions they do not know and say so. |
-| `case_id` | string | `<seed>-<profile>-<days>d-r<residents>-<incident>`, e.g. `7-normal-60d-r10-I1`. |
-| `generator` | object | How to regenerate the case: `tool`, `sim_version`, `config_version`, `seed`, `profile`, `days`, `residents`, `incident`, `event_log_digest`. |
+| `case_id` | string | `<seed>-<profile>-<days>d-r<residents>-<incident>`, e.g. `7-normal-60d-r10-I1`. Cases made by the Godot game's own generator add a `godot-` prefix (`godot-2-tension-30d-r10-I1`): a different simulation, so a different case from the same seed. |
+| `generator` | object | How to regenerate the case: `tool`, `sim_version`, `config_version`, `seed`, `profile`, `days`, `residents`, `incident`, `event_log_digest`. Godot-made cases have `tool` `"mystery (Godot)"`, versions `"godot-native"`, and an extra `options` object (`memory`, `crime`, `violence`, `shop_self_service`): the switches the town ran with. |
 | `summary` | object | Spoiler-free card for menus: `title`, `town`, `start_label`, `season`, `difficulty` (`gentle`/`standard`/`hard`/`very hard`, from the case's suitability verdict). |
 | `investigation` | object | The player-safe view (below). |
 | `sealed_truth` | object | The developer truth, sealed (below). |

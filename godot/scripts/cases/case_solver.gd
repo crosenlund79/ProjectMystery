@@ -368,6 +368,9 @@ func decide_theft() -> Dictionary:
 		if not lie_kinds(rid).is_empty():
 			cands.append(rid)
 	if cands.is_empty():
+		for rid in suspects:
+			if pairs.has(rid):
+				return {"ok": false, "reason": "nobody's account of the time in question is proven false (at most one witness against an account: word against word)"}
 		return {"ok": false, "reason": "nobody's account of the time in question is proven false"}
 	if cands.size() > 1:
 		return {"ok": false, "reason": "more than one account of the time in question is proven false"}
@@ -532,10 +535,11 @@ func decide_collision() -> Dictionary:
 		alt.append(escape(n))
 	var vn_rx := "(?:%s)" % "|".join(alt)
 	var marks_rx := "(?:%s)" % "|".join(PackedStringArray(marks))
-	var damaged := {}  # vehicle -> [entry ids showing damage like this]
-	var before := {}  # vehicles known to have been damaged before the time in question
-	var drivers := {}  # rid -> [entry ids tying them to a vehicle]: filled per vehicle below
-	var repairs := []  # [vehicle, entry id, customer rid or null]
+	var damaged := {}  # vehicle -> [entry ids showing damage like this since the time in question]
+	var before := {}  # vehicle -> time it was last known damaged before the time in question
+	var drivers := {}  # rid -> [entry ids tying them to the vehicle]: filled below
+	var repairs := []  # [vehicle, entry id, customer rid or null, time]: every workshop line about a vehicle
+	var scrap := []  # [vehicle, entry id]: mended parts in the workshop scrap pile
 	var chalked := RegEx.new()
 	chalked.compile("chalked '(?<v>%s)'" % vn_rx)
 	var mark_rx := RegEx.new()
@@ -548,18 +552,18 @@ func decide_collision() -> Dictionary:
 						_put(damaged, vid, e["id"])
 			var m := chalked.search(String(e["text"]))
 			if m != null:
-				_put(damaged, by_name[m.get_string("v")], e["id"])
-		if e["source"] == "record" and e["time"] != null and int(e["time"]) >= w0:
+				scrap.append([by_name[m.get_string("v")], e["id"]])
+		if e["source"] == "record" and e["time"] != null:
+			var line := String(e["text"])
 			for vid in vehicles:
 				var vname: String = vehicles[vid]["name"]
-				var line := String(e["text"])
 				if not (line.contains(vname + " (") or line.contains("for %s (workshop's own)" % vname)):
 					continue
 				var customer = null
 				for r in data["residents"]:
 					if line.contains("%s (%s)" % [vname, r["name"]]):
 						customer = r["id"]
-				repairs.append([vid, e["id"], customer])
+				repairs.append([vid, e["id"], customer, int(e["time"])])
 	var seen_damage := RegEx.new()
 	seen_damage.compile("^I saw (?<v>%s) with .*%s" % [vn_rx, marks_rx])
 	var owned := RegEx.new()
@@ -569,25 +573,42 @@ func decide_collision() -> Dictionary:
 		var it: Dictionary = pair[1]
 		if it["time"] == null:
 			continue
+		var t := int(it["time"])
 		var m: RegExMatch = seen_damage.search(it["text"]) if it["source"] == "saw" else null
-		if m != null:
-			if int(it["time"]) < w0:
-				before[by_name[m.get_string("v")]] = true
-			else:
-				_put(damaged, by_name[m.get_string("v")], e["id"])
 		var o := owned.search(it["text"])
-		if o != null and int(it["time"]) < w0:
-			before[by_name[o.get_string("v")]] = true
+		var vid = null
+		if m != null:
+			vid = by_name[m.get_string("v")]
+			if t >= w0:
+				_put(damaged, vid, e["id"])
+		elif o != null:
+			vid = by_name[o.get_string("v")]
+		if vid != null and t < w0 and t > int(before.get(vid, -1)):
+			before[vid] = t
+	# damage known from before the time in question does not count against a vehicle mended since; a repair after it
+	# shows the vehicle needed one (and the mended parts in the scrap pile are from then)
+	var mended_after := {}
 	for rp in repairs:
-		_put(damaged, rp[0], rp[1])
+		if rp[3] >= w0:
+			_put(damaged, rp[0], rp[1])
+			mended_after[rp[0]] = true
+		elif before.has(rp[0]) and rp[3] > int(before[rp[0]]):
+			before.erase(rp[0])
+	for sc in scrap:
+		if mended_after.has(sc[0]):
+			_put(damaged, sc[0], sc[1])
 	var cands := []
+	var earlier := []
 	var vids: Array = damaged.keys()
 	vids.sort()
 	for vid in vids:
-		if not before.has(vid):
+		if before.has(vid):
+			earlier.append(vehicles[vid]["name"])
+		else:
 			cands.append(vid)
 	if cands.is_empty():
-		return {"ok": false, "reason": "no vehicle can be shown to carry damage from it"}
+		var why := "" if earlier.is_empty() else " (%s was already damaged before the time in question)" % ", ".join(PackedStringArray(earlier))
+		return {"ok": false, "reason": "no vehicle can be shown to carry damage from it" + why}
 	if cands.size() > 1:
 		return {"ok": false, "reason": "more than one vehicle carries damage like it"}
 	var vid: String = cands[0]
@@ -608,7 +629,7 @@ func decide_collision() -> Dictionary:
 			if who != null and _put(drivers, who, e["id"]):
 				order.append(who)
 	for rp in repairs:
-		if rp[0] == vid and rp[2] != null and _put(drivers, rp[2], rp[1]):
+		if rp[0] == vid and rp[3] >= w0 and rp[2] != null and _put(drivers, rp[2], rp[1]):
 			order.append(rp[2])
 	if drivers.is_empty():
 		return {"ok": false, "reason": "nothing ties anyone to the %s at the time" % vname}
