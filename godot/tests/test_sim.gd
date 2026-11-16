@@ -124,6 +124,8 @@ func _runs(seeds: Array, layer: String) -> Array:
 			print("  simulated %s seed %d%s: %d days, %d events, %d ms%s" % [profile, seed,
 					{"off": "", "theft": ", crime on, violence off", "crime": ", crime on"}[layer], DAYS,
 					sim.events.events.size(), Time.get_ticks_msec() - started, detail])
+			if layer != "off" and sim.samples["hunger"] / maxf(1.0, float(sim.samples["hours"])) > 35:
+				print("  hungry month %s seed %d (%s): %s" % [profile, seed, layer, _hungry_month(sim)])
 			runs.append({"profile": profile, "seed": seed, "sim": sim, "crime": layer != "off", "layer": layer})
 	return runs
 
@@ -140,6 +142,51 @@ static func _economy(sim) -> String:
 			sim.samples["hunger"] / maxf(1.0, float(sim.samples["hours"])), counts.get("purchase", 0),
 			counts.get("no_stock", 0), counts.get("delivery", 0), units, sim.world.containers["till:grocery"]["cash"],
 			sim.residents[grocer].cash]
+
+
+@warning_ignore("integer_division")
+static func _hungry_month(sim) -> String:
+	## Day by day: purchases (p), hours the grocer spent in the shop when it was open (g), the town's mean wallet at
+	## the end of the day (w) and how many could not afford a unit of food (b); then what the grocer did instead.
+	var grocer: String = sim.world.containers["till:grocery"]["owners"][0]
+	var price: int = sim.profile["food_price"]
+	var bought := {}
+	var doing := {}
+	for ev in sim.events.events:
+		var d: int = SimClock.day_of(ev["time"])
+		if ev["kind"] == "purchase":
+			bought[d] = int(bought.get(d, 0)) + 1
+		if grocer in ev["actors"] and not (ev["kind"] in ["move", "meal", "purchase", "drink", "chat"]):
+			doing[ev["kind"]] = int(doing.get(ev["kind"], 0)) + 1
+	var wallets := {}
+	for rid in sim.ids:
+		wallets["wallet:" + rid] = int(sim.initial_balances["wallet:" + rid]["cash"])
+	var transfers: Array = sim.world.transfers
+	var i := 0
+	var days := PackedStringArray()
+	for d in range(1, int(sim.config["days"]) + 1):
+		var end: int = d * SimClock.DAY
+		while i < transfers.size() and int(transfers[i]["time"]) < end:
+			var tr: Dictionary = transfers[i]
+			if tr["asset"] == "cash":
+				if wallets.has(tr["src"]):
+					wallets[tr["src"]] -= int(tr["amount"])
+				if wallets.has(tr["dst"]):
+					wallets[tr["dst"]] += int(tr["amount"])
+			i += 1
+		var total := 0
+		var broke := 0
+		for k in wallets:
+			total += wallets[k]
+			if wallets[k] < price:
+				broke += 1
+		var hours := 0
+		if not SimClock.is_rest_day(end - SimClock.DAY):
+			for h in range(8, 18):
+				if sim.where(grocer, SimClock.at(d, h, 30)) == "grocery":
+					hours += 1
+		days.append("D%d %dp/%dg/%dw/%db" % [d, int(bought.get(d, 0)), hours, total / maxi(1, wallets.size()), broke])
+	return "%s; the grocer otherwise: %s" % [" ".join(days), JSON.stringify(doing)]
 
 
 static func _fled(sim) -> int:
