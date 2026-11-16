@@ -80,7 +80,9 @@ The town simulation is moving into Godot as well, with no Python at all. It live
   or got wrong about it.
 
 The crime layer (pilots 3A and 3B) is behind a `crime` switch, off by default; `"violence": false` keeps only
-pilot 3A.
+pilot 3A. One rule differs from Python on purpose: shop workers may serve themselves when nobody else is serving,
+which ends a deadlock in which the whole town stopped buying food (`"shop_self_service": false` restores Python's
+rule, for comparison only).
 
 [`docs/godot-simulation-migration.md`](docs/godot-simulation-migration.md) has the module map, the boundaries,
 the test results and the next step. To watch a town live for two weeks, headless, with how its news got round:

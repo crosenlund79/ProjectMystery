@@ -10,7 +10,9 @@ all run natively, with Python retired from the active architecture. This documen
 - **Pilot 3B:** violence and accidents: fights, falls and collisions on Mill Road, and what follows them:
   injuries and the clinic, damaged vehicles and the workshop, people found hurt, missed or dead.
 
-With pilot 3B, the whole Python simulation runs natively in Godot.
+With pilot 3B, the whole Python simulation runs natively in Godot. One rule then differs from Python on
+purpose: shop workers may serve themselves, which ends a deadlock in which the whole town stops buying food (see
+[The grocery deadlock fix](#the-grocery-deadlock-fix-a-deliberate-difference-from-python)).
 
 The existing game is unchanged: cases are made by Python and played in Godot.
 
@@ -124,6 +126,68 @@ owned up to on the spot is reported openly and is never a case candidate. A fall
 registry once someone finds out about it, exactly as in Python. Nothing in the simulation makes a case: that is
 for the case-generation pilot to decide (see [Next](#next-pilot-4-evidence-case-validation-and-saved-case-generation)).
 
+## The grocery deadlock fix: a deliberate difference from Python
+
+**The problem, in Python's rules** (`mystery/sim/decisions.py`, the shop option; `mystery/sim/actions.py`,
+`shop`):
+- Buying food needs someone *else* serving at the grocery: someone who works there and is working.
+- On a morning the shop opens, the grocer's and the assistant's households may both have an empty pantry.
+  Shopping then outscores working for both: 108 for a household of two (84 alone) against at most 95.
+- Both go shopping in their own shop. Neither can buy, neither counts as serving, and nobody else can buy
+  either. They try again every hour, for the rest of the month, and the town goes hungry (mean hunger 40-58
+  against about 26).
+- In a survey of 40 towns a season, with the crime layer off and on, it happened in 29 of 320 Godot months (CI
+  run 42) and 21 of 320 Python months. On both sides it came in towns where both shop workers live in
+  households of two or more; the one exception was a Godot assistant who lived alone and cared little for work
+  (diligence 0.10).
+- A related oddity: a diligent grocer living alone seldom leaves work to go shopping, and cannot buy from
+  themselves when the assistant is out. In Python such a grocer's pantry is empty after the first open hour on
+  49% of shop days (38 towns).
+
+**The fix** (`scripts/sim/sim_actions.gd`, `shop` and `_provision`):
+- **Self-service.** Someone who works at the grocery may serve themselves while it is open and nobody else is
+  serving.
+  - They pay the usual price, from their own purse into the till; the food goes from the shop's stock into their
+    household's pantry.
+  - The sale is written in the ledger like any other, marked "(self-service)", and its event carries
+    `self_service`.
+  - It is never on credit: short of money, they buy what they can pay for.
+- **Buying during the shift.** A grocery worker on shift whose household is running short buys food during the
+  shift. "Running short" is the same need that sends anyone shopping: less than half a week's food, and nobody
+  in the household has shopped today. They buy from a colleague who is serving, otherwise by serving themselves.
+- **Everything else is as before.** Customers still need someone serving. Every other sale, its price, its event
+  and its ledger line are unchanged, and so are ownership and the till's books.
+- **Python's rule is kept behind a switch.** `"shop_self_service": false` (`--shop-self-service=off`) runs
+  Python's shop rule. It is there only to compare with Python and for the tests: to replay the deadlock, and to
+  reproduce every history pinned before the fix. Python itself is unchanged, deadlock included.
+
+**What it changes** (CI run 46):
+
+| | Before the fix | With it |
+| --- | --- | --- |
+| Months in which the grocery stalls, 40 towns a season, crime off and on | 29 of 320 | 0 of 320 |
+| The 29 months that stalled, run again | stalled | all trade to the end, every rule holding |
+| Solitary grocers: pantry empty after the first open hour | 49% of shop days (Python, 38 towns) | 108 of 1,560 shop days (6.9%) with crime off, 81 of 1,560 (5.2%) with it on |
+| The normal-season crime months that starved (seeds 2, 3 and 5) | hunger 40-58, 25-50 purchases | hunger 25-26, 69-78 purchases |
+
+- **How often workers serve themselves:** about 9 to 11 times a month in a town of 10 (350 to 437 times per 40
+  towns).
+- **How often the old trap still opens:** both workers serve themselves in the same hour 15 to 32 times per 40
+  towns, depending on the season. Each would have started a stall under Python's rule.
+- **Routine still matches Python.** Every routine statistic is within tolerance, compared with Python's months
+  in which the grocery kept trading. With the crime layer off, per resident per day (Godot / Python):
+
+| Season | Meals | Purchases | Pub meals | Hunger | Hours at work |
+| --- | --- | --- | --- | --- | --- |
+| normal | 1.97 / 1.92 | 0.237 / 0.220 | 0.024 / 0.055 | 25.3 / 26.3 | 0.300 / 0.300 |
+| scarcity | 1.90 / 1.90 | 0.271 / 0.242 | 0.043 / 0.047 | 28.0 / 27.5 | 0.301 / 0.298 |
+| crisis | 1.86 / 1.86 | 0.244 / 0.243 | 0.052 / 0.047 | 28.6 / 28.9 | 0.272 / 0.273 |
+| tension | 1.94 / 1.87 | 0.243 / 0.223 | 0.018 / 0.032 | 27.1 / 29.0 | 0.300 / 0.300 |
+
+  Shop workers now buy a little more often and eat at the pub a little less (the solitary grocer no longer lives
+  on pub meals). Python's lower crisis-season meals, long listed as a difference (1.51 against Godot's 1.89),
+  were its stalled months: on the months in which the grocery kept trading, the two agree (1.86 / 1.86).
+
 ## What waits for later pilots
 
 These are the boundaries. The next layer plugs into the event log, presence intervals, debts, records, money
@@ -139,8 +203,22 @@ global random generator, no iteration over unordered collections and no transcen
 same seed and settings twice gives an identical event-log digest; the tests check this, and CI compares the
 digests produced on Windows and Linux.
 
-Twelve histories are pinned in `godot/tests/sim_golden.json`. Both the Windows tests and the Linux demo must
-reproduce them:
+Twenty-six histories are pinned in `godot/tests/sim_golden.json`. Both the Windows tests and the Linux demo
+must reproduce them.
+
+**The grocery deadlock fix changed every history pinned before it.** In each of the twelve, shop workers buy
+during their shifts within the first week, and every later draw shifts.
+- **Under Python's shop rule:** the twelve digests pinned before the fix are kept, under the same keys marked
+  "Python's shop rule". They are reproduced with `"shop_self_service": false`, the separate check that the fix
+  changed nothing else.
+- **With the fix:** the plain keys hold the new histories. They were pinned once the Windows tests and the Linux
+  demo had produced the same twelve new digests (CI run 46).
+- **Two more months with the fix:** the fix also changed what happens in the three full-crime months (now a
+  single fall between them). So two more are pinned with the fix, chosen because violence happens in them:
+  - seed 2 tension holds three collisions, two driven on from, and a quiet repair;
+  - seed 4 tension holds a fight, treated at the clinic.
+
+The twelve histories, as described below, are those under Python's shop rule:
 
 - **Memory off:** Pilot 1's three histories (seed 7 normal, seed 21 tension, seed 5 crisis with 12
   residents). Their digests were pinned before memory existed and are byte-for-byte unchanged by Pilot 2. This
@@ -200,9 +278,10 @@ godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --
 
 **Options:**
 - `--out=<folder>` writes the whole history as JSON, with beliefs, incidents and traces.
-- `--golden` checks the twelve pinned digests.
+- `--golden` checks the twenty-six pinned digests.
 - `--memory=off` runs pilot 1.
 - `--crime` turns on the whole crime layer (pilots 3A and 3B); `--violence=off` with it runs pilot 3A only.
+- `--shop-self-service=off` runs Python's shop rule, without the grocery deadlock fix.
 
 CI runs both commands on Linux and uploads the results as the `simulation-demo` artifact.
 
@@ -216,8 +295,8 @@ for b in sim.memory[sim.ids[0]].beliefs:
 
 ## How it is verified
 
-`godot/tests/test_sim.gd`, `test_memory.gd`, `test_crime.gd` and `test_violence.gd` are part of the Godot test
-run in CI.
+`godot/tests/test_sim.gd`, `test_memory.gd`, `test_crime.gd`, `test_violence.gd` and `test_grocery.gd` are part of
+the Godot test run in CI.
 
 ### The world (pilot 1, and still with memory on)
 
@@ -342,6 +421,30 @@ scenario tests. The pilot 3A rules above still hold.
 
 Every scenario and every whole month also checks that every belief has a plausible source.
 
+### The grocery (the deadlock fix)
+
+**Every sale**, in every simulated month (`sim_check.gd`, `_check_shop`):
+- it happens while the grocery is open, at the season's price;
+- the money goes from the buyer's purse into the till, and the food from the shop's stock into the buyer's
+  household pantry, nothing else;
+- it is served by someone else who works at the grocery and is in the shop, or it is marked self-service and the
+  buyer works there.
+
+**Scenarios** (`tests/test_grocery.gd`):
+
+| Test | What it shows |
+| --- | --- |
+| Self-service | Monday morning, nobody serving, both workers' pantries empty: both serve themselves, each a week's food for their household. The usual price is paid from their own purses; the money is in the till, the food has left the stock, the till holds what the grocer expects, and both sales are in the ledger marked self-service. No credit. |
+| Only for shop workers, only when open | A customer alone in the shop, with nobody serving, still cannot buy, and may come back later. A worker gets no self-service on Sunday, after closing or before opening. |
+| A colleague serves | With the assistant at work, the grocer buys from the assistant, as does a customer: ordinary sales. |
+| No credit to oneself | A worker short of money buys only what they can pay for. With no money: nothing, no credit, and no second try that day. |
+| Buying during the shift | A grocer living alone, working on Monday with an empty pantry and the assistant not yet in, serves themselves without leaving work, once that day. On Tuesday, running short with the assistant serving, they buy from the assistant. With half a week's food at home, nothing. |
+| The old deadlock, replayed | A town where both workers live in households of two, run to Monday Day 8, when the grocer's, the assistant's and a customer's pantries are found empty. Under Python's rule both workers go shopping in their own shop, and not one sale follows to the end of the month. With the fix the same trap opens: both serve themselves in that hour, both are back at work by noon, others are served that day (the customer's household too), and the shop trades to the end of the month. |
+| Every month that stalled before | All 29 months that stalled in the survey before the fix (13 with crime off, 16 with it on) are run again. None stalls, every rule holds, and in 33 hours among them both workers served themselves, each the start of a stall under Python's rule. |
+| Solitary grocers | In 8 normal-season towns whose grocer lives alone, the pantry is empty after the first open hour on 3 of 208 shop days (Python without the fix: 49%). |
+
+Every Python comparison run must also trade to the end of the month (next section).
+
 ### Compared with Python
 
 `tools/sim_reference.py` runs the Python simulation three times, 40 runs each (4 seasons x 10 seeds):
@@ -370,7 +473,8 @@ It measures that simulation exactly as `sim_check.gd` measures the Godot one:
     hurt or dead, people missed, treatments, repairs and burials, per resident per day;
   - the share of collisions driven on from, the share of harmful incidents discovered, and how many people
     come to know of a fight;
-- whether, and from which day, the grocery stalled (see Known differences).
+- whether, and from which day, the grocery stalled (`stall_day`), and the statistics over the months in which
+  it kept trading.
 
 **What the test enforces:**
 - Routine and core memory statistics must match within tolerance: beliefs seen and told, gossip chats and items passed on.
@@ -380,12 +484,15 @@ It measures that simulation exactly as `sim_check.gd` measures the Godot one:
   must steal as often as Python's within a factor of two: 0.0052 thefts per resident per day (31 thefts) against
   0.0060 (CI run 33). Of the 332 statistics (83 per season), one is outside its tolerance: the share of thefts
   discovered in the tension season (see Known differences).
-- With the whole crime layer, the core statistics must match on the months in which the grocery kept trading to
-  the end, on both sides, and the stall counts are reported. A stalled month is an absorbing state of the
-  shared rules: once both shop workers go shopping in their own shop, nobody buys again, and hunger, purchases
-  and sightings for the rest of the month are about the stall, not about anything else. With five months a
-  season, one stall moves the season's mean hunger by about six points. The stall itself is compared on its own,
-  over 40 towns a season (see Known differences).
+- **Since the grocery deadlock fix**, Godot's grocery never stalls, and all three comparisons check that for
+  every Godot month. Python's still can: a stalled month is an absorbing state in which hunger, purchases and
+  sightings for the rest of the month are about the stall and nothing else. With ten months a season, one stall
+  moves the mean hunger by about three points. So Godot is compared with Python's months in which the grocery
+  kept trading, and Python's stall count is reported. That leaves out 3 of Python's 10 crisis months with the
+  crime layer off and with stealing only, and 2 with the whole layer.
+- With the fix, all core statistics match in all three comparisons (CI run 46). Outside tolerance, among the
+  non-core statistics, there is one: with stealing only, others who learn of missed rent in the crisis season
+  (1.9 against 1.1).
 - Violence is too rare to compare season by season (a season's five months hold none to three of each kind), so
   across all seasons together Godot must have harm, and the counts are reported against Python's rates. Each
   mechanism is covered by a scenario test instead.
@@ -451,7 +558,7 @@ are per month in a town of 10 (per resident per day x 300). Each cell is Godot /
   beliefs seen and told, gossip) matches Python with crime on as with it off.
 - **Speed:** 30 simulated days with crime on take 0.57-1.47 s on the Windows CI runner.
 
-## Results with the whole crime layer (CI run 43)
+## Results with the whole crime layer (CI run 43, before the grocery fix)
 
 **All tests:** 107 tests and 17,858 checks pass on Windows. Linux reproduces all twelve pinned histories.
 
@@ -502,11 +609,19 @@ hours, wages 0.60 / 0.58).
 
 ## Known differences from Python
 
+### In every layer: the grocery (deliberate)
+
+| Difference | Godot | Python | Why |
+| --- | --- | --- | --- |
+| Shop workers serving themselves | allowed while the shop is open and nobody else is serving; at the usual price, never on credit | never: a sale needs someone else serving | Ends the grocery deadlock, in which the whole town stopped buying food for the rest of the month (29 of 320 Godot months before the fix, 21 of 320 Python months). See [The grocery deadlock fix](#the-grocery-deadlock-fix-a-deliberate-difference-from-python). |
+| Shop workers buying during their shift | when their household is running short: from a colleague serving, or self-service | only by choosing to go shopping instead of working | A diligent grocer living alone otherwise seldom has food at home (pantry empty on 49% of shop days in Python, 6% in Godot). |
+| Python's rule | `"shop_self_service": false` | | Kept for the comparison and the tests only: it reproduces every history pinned before the fix and replays the deadlock. Python is not changed to match. |
+
 ### With the whole crime layer (pilot 3B)
 
 | Difference | Godot | Python | Why |
 | --- | --- | --- | --- |
-| The grocery stalls for the rest of the month | 3 of 5 normal-season months in the comparison; 16 of 160 months in a 40-town survey (13 of 160 with crime off) | none of 10 normal-season months; 2 of 10 crisis months; 10 of 160 in the same survey (11 with crime off) | The same rule on both sides, at the same rate (see the realism concerns below); the towns differ, so it falls in different seasons. The survey counted stalls in 40 towns a season on each side (Godot in CI run 42, Python over its seeds 1 to 40), measured the same way (`_stall_day` in `test_sim.gd`, `stall_day` in `tools/sim_reference.py`). Every stalled month, on both sides, is a town in which both shop workers live in households of two or more. This is why routine is compared on the months in which the grocery kept trading. |
+| The grocery stalls for the rest of the month | never, since the grocery deadlock fix; before it, 16 of 160 months with the crime layer (13 of 160 without) in a 40-town survey | 10 of 160 in the same survey (11 without the crime layer) | Before the fix, the same rule on both sides at the same rate; the towns differ, so the stalls fell in different seasons. Measured the same way on both sides (`_stall_day` in `test_sim.gd`, `stall_day` in `tools/sim_reference.py`). Since the fix, a deliberate difference: see [The grocery deadlock fix](#the-grocery-deadlock-fix-a-deliberate-difference-from-python). |
 | How long someone has been missing | from when the person checking on them last saw them | the true time of death | Python writes the time of death into the carer's belief, which they cannot know. Godot uses the last time the carer saw the person (or leaves it open if they never did), so that no belief reads the truth. No event changes, only the start of that belief. |
 | Repairs | 3 in 20 months: every driver who drove on | 2 in 40 months, of 4 who drove on | Rare on both sides. A guilty driver mends the damage once the vehicle is at the workshop and the repair outscores their other choices. |
 | Confessions | 4 in 20 months, all after thefts | 2 in 40 months | Rare. In the normal and scarcity seasons, more of Godot's suspicions fell on the real culprit (68% and 37%, against 23% and 19%, over few accusations), and an accused culprit may confess. A confession is then told all over town, so `confession` beliefs in those two seasons are the two non-core statistics outside tolerance. |
@@ -539,7 +654,7 @@ Python does.
 | Seeing people drunk (scarcity, crisis) | 0.94, 0.41 | 0.46, 0.22 | Follows from pilot 1's higher drink count in those seasons. |
 | An argument that would turn violent | the argument is logged, the fight is not | a fight (assault), with injuries | Crime layer. Counted as `escalations_deferred`. |
 | Ledger mistakes | none | about 1 in 130 sales | Incident generation (pilot 3). |
-| Meals in the crisis season | 1.89 | 1.51 | From pilot 1: Python's crisis runs vary widely (hunger standard deviation 18). |
+| Meals in the crisis season | 1.89 | 1.51 | Explained by the grocery deadlock: 3 of Python's 10 crisis months stall (hunger standard deviation 18). Since the fix, Godot is compared with Python's trading months, and they agree (1.86 / 1.86). |
 | Chats | every chat is counted | only chats that pass on gossip are logged | Since pilot 2, Godot also logs only gossip chats; the comparison counts every chat on both sides. |
 
 **Limitations of pilot 2:**
@@ -550,10 +665,11 @@ Python does.
 
 ## Realism concerns, shared with Python
 
-These are Python's own rules, ported faithfully and left as they are (the brief for pilot 3B: no redesign for
-the sake of parity). Each would change histories on both sides, so each needs a decision before it is changed.
+These are Python's own rules, ported faithfully (the brief for pilot 3B: no redesign for the sake of parity). The
+first two are fixed in Godot since the grocery deadlock fix, deliberately, and remain in Python. The others are
+left as they are: each would change histories, so each needs a decision before it is changed.
 
-- **The grocery can stall for the rest of the month.** On a morning the shop opens, the grocer's and the
+- **The grocery can stall for the rest of the month** (fixed in Godot). On a morning the shop opens, the grocer's and the
   assistant's households may both have an empty pantry.
   - "Shop" then outscores "work". Shopping scores 25, plus 3 for every unit short of 8 per person, plus 35 for
     an empty pantry: 108 for a household of two, 84 for one person. Work scores at most 95 (75, plus up to 20
@@ -565,9 +681,9 @@ the sake of parity). Each would change histories on both sides, so each needs a 
     about 26.
   - It happens in about 6-10% of months on both sides, most often on a Monday, after a Sunday when the shop
     is shut and pantries run down.
-  - A small fix would be to let staff on shift serve themselves at their own shop, or not to offer them
-    "shop" there. It would also end the next oddity.
-- **A grocer living alone and keen on work never restocks their own pantry.** They will not leave work to shop,
+  - Godot now lets shop workers serve themselves when nobody else is serving, and buy during their shift.
+- **A grocer living alone and keen on work never restocks their own pantry** (fixed in Godot by buying during
+  the shift). They will not leave work to shop,
   and cannot buy from themselves when the assistant is out, so they eat at the pub. In Python's normal season
   such a grocer's pantry is often empty when the shop opens, in some towns on most days.
 - **Every guilty driver tells the mechanic the same lie** ("Hit a deer out on the ridge road a few nights back"),
@@ -592,7 +708,6 @@ case the existing Godot game can play, with no Python anywhere. That is about 2,
   - Crimes come first: thefts, hit-and-runs, fights.
   - Accidents stay out unless chosen on purpose. A fall becomes a case only when it is deliberately selected,
     for instance one whose victim believes they were pushed; never automatically.
-  - A stalled month would be a poor town to set a case in until the stall is decided.
 - **Evidence and records.** What the investigator can find when the case starts:
   - the traces still there: forced doors, blood, debris, scrap, and stashes found only by searching;
   - the records: the ledger, the pub's tabs, the clinic log and the workshop orders;
