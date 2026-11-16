@@ -55,6 +55,7 @@ var perceived := {}  # "rid|event id" -> "saw", "heard" or "trace": who noticed 
 var crime_on := false  # config "crime": theft, financial incidents, discovery and evidence (Pilot 3A)
 var incidents := []  # the incident registry (scripts/sim/sim_incidents.gd): developer-only truth
 var violence_on := false  # config "crime" and "violence": fights, falls, collisions and what follows (Pilot 3B)
+var self_service_on := true  # config "shop_self_service": the grocery deadlock fix (sim_actions.gd, shop)
 var recent_drinks := {}  # rid -> [[minute, drink event id], ...] (the last ten): what led to a fall or a crash
 var found_bodies := []  # the dead whom someone has found
 var samples := {}  # hourly samples for the statistics (see _sample)
@@ -84,6 +85,7 @@ func _init(cfg: Dictionary) -> void:
 	memory_on = config["memory"]
 	crime_on = config["crime"]
 	violence_on = crime_on and config["violence"]
+	self_service_on = config["shop_self_service"]
 	for rid in ids:
 		intervals[rid] = [[residents[rid].home, 0, -1]]
 		pressure[rid] = 0.0

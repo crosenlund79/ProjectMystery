@@ -26,6 +26,8 @@ const CORE := ["asleep", "share.home", "share.work", "per_resident_day.meal", "p
 ## With memory off they are Pilot 1's histories, unchanged since Pilot 1; with memory on, Pilot 2's (unchanged
 ## by Pilot 3A, whose crime switch is off by default); with crime on and violence off, Pilot 3A's (unchanged by
 ## Pilot 3B); with the whole crime layer, Pilot 3B's. The crime runs are a month long, so that crimes happen in them.
+## The grocery deadlock fix changed all twelve (shop workers buy during their shifts from the first week); under
+## Python's shop rule ("shop_self_service": false) each is reproduced as it was pinned before the fix.
 const GOLDEN_RUNS := [
 	{"seed": 7, "days": 14, "profile": "normal", "memory": false},
 	{"seed": 21, "days": 14, "profile": "tension", "memory": false},
@@ -39,6 +41,25 @@ const GOLDEN_RUNS := [
 	{"seed": 1, "days": 30, "profile": "tension", "crime": true},
 	{"seed": 3, "days": 30, "profile": "tension", "crime": true},
 	{"seed": 1, "days": 30, "profile": "crisis", "crime": true},
+	# With the grocery fix, the three months above hold only a fall between them; these two keep a fight, collisions
+	# (driven on from) and a quiet repair among the pinned histories with the fix.
+	{"seed": 2, "days": 30, "profile": "tension", "crime": true},
+	{"seed": 4, "days": 30, "profile": "tension", "crime": true},
+	# The same twelve under Python's shop rule (without the grocery deadlock fix): the histories pinned before it,
+	# unchanged. That is the separate check that the fix changes nothing else.
+	{"seed": 7, "days": 14, "profile": "normal", "memory": false, "shop_self_service": false},
+	{"seed": 21, "days": 14, "profile": "tension", "memory": false, "shop_self_service": false},
+	{"seed": 5, "days": 14, "profile": "crisis", "residents": 12, "memory": false, "shop_self_service": false},
+	{"seed": 7, "days": 14, "profile": "normal", "memory": true, "shop_self_service": false},
+	{"seed": 21, "days": 14, "profile": "tension", "memory": true, "shop_self_service": false},
+	{"seed": 5, "days": 14, "profile": "crisis", "residents": 12, "memory": true, "shop_self_service": false},
+	{"seed": 21, "days": 30, "profile": "tension", "crime": true, "violence": false, "shop_self_service": false},
+	{"seed": 7, "days": 30, "profile": "scarcity", "crime": true, "violence": false, "shop_self_service": false},
+	{"seed": 5, "days": 30, "profile": "crisis", "residents": 12, "crime": true, "violence": false,
+			"shop_self_service": false},
+	{"seed": 1, "days": 30, "profile": "tension", "crime": true, "shop_self_service": false},
+	{"seed": 3, "days": 30, "profile": "tension", "crime": true, "shop_self_service": false},
+	{"seed": 1, "days": 30, "profile": "crisis", "crime": true, "shop_self_service": false},
 ]
 const SCRIPTS := ["res://scripts/sim/sim_rng.gd", "res://scripts/sim/sim_clock.gd", "res://scripts/sim/sim_config.gd",
 		"res://scripts/sim/sim_world.gd", "res://scripts/sim/sim_resident.gd", "res://scripts/sim/sim_town.gd",
@@ -423,5 +444,6 @@ static func golden_key(cfg: Dictionary) -> String:
 	var crime := ""
 	if cfg.get("crime", false):
 		crime = ", crime on" if cfg.get("violence", true) else ", crime on, violence off"
-	return "seed %d, %s, %d days, %d residents, memory %s%s" % [int(cfg["seed"]), cfg["profile"], int(cfg["days"]),
-			int(cfg.get("residents", 10)), "on" if cfg.get("memory", true) else "off", crime]
+	return "seed %d, %s, %d days, %d residents, memory %s%s%s" % [int(cfg["seed"]), cfg["profile"], int(cfg["days"]),
+			int(cfg.get("residents", 10)), "on" if cfg.get("memory", true) else "off", crime,
+			"" if cfg.get("shop_self_service", true) else ", Python's shop rule"]

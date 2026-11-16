@@ -1,12 +1,13 @@
 ## Headless demonstration of the native town simulation (no Python, no rendering, no network):
 ##   godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal
-##       [--residents=10] [--memory=off] [--crime] [--violence=off] [--out=<folder>] [--golden]
+##       [--residents=10] [--memory=off] [--crime] [--violence=off] [--shop-self-service=off] [--out=<folder>] [--golden]
 ## Prints the town, its people, the first day hour by hour, a line per day, the end state, the integrity
 ## checks and the event-log digest; --out writes the whole history as JSON; --golden checks the pinned
 ## digests in tests/sim_golden.json (the same check the Windows tests make); --crime turns on the whole crime layer
 ## (theft and financial incidents, Pilot 3A; fights, falls, collisions and what follows, Pilot 3B; --violence=off
-## leaves out the latter) and prints what really happened against what the town came to believe. Exit code 0 only
-## if every check passed.
+## leaves out the latter) and prints what really happened against what the town came to believe.
+## --shop-self-service=off runs Python's shop rule, without the grocery deadlock fix. Exit code 0 only if every check
+## passed.
 extends SceneTree
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -41,6 +42,8 @@ func _initialize() -> void:
 			cfg["crime"] = true
 		elif a == "--violence=off":
 			cfg["violence"] = false
+		elif a == "--shop-self-service=off":
+			cfg["shop_self_service"] = false
 	for path in TestSim.SCRIPTS:
 		var script = load(path)
 		if script == null or not script.can_instantiate():

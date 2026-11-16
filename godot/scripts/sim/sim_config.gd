@@ -48,10 +48,14 @@ static func normalize(cfg: Dictionary) -> Dictionary:
 	## evidence and the incident registry (Pilot 3A), and with violence (default true) fights, injuries and
 	## deaths, drunken falls, collisions on Mill Road, the clinic, repairs, and people found or missed (Pilot 3B).
 	## crime with violence false is Pilot 3A exactly (its pinned histories hold).
+	## shop_self_service (default true): someone who works at the grocery may serve themselves when nobody else is
+	## serving, and buys for their household during their shift (the grocery deadlock fix, a deliberate difference
+	## from Python). false is Python's shop rule, kept only to compare with Python and to show, in the tests, the
+	## deadlock and that the fix changes nothing else (every history pinned before it is reproduced).
 	return {"seed": int(cfg.get("seed", 1)), "days": int(cfg.get("days", 60)),
 			"profile": String(cfg.get("profile", "normal")), "residents": int(cfg.get("residents", 10)),
 			"memory": bool(cfg.get("memory", true)), "crime": bool(cfg.get("crime", false)),
-			"violence": bool(cfg.get("violence", true))}
+			"violence": bool(cfg.get("violence", true)), "shop_self_service": bool(cfg.get("shop_self_service", true))}
 
 
 static func problem(cfg: Dictionary) -> String:

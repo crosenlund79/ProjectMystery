@@ -44,7 +44,6 @@ func run(t, _tree) -> void:
 	_old_deadlock(t)
 	_stalled_before(t)
 	_solitary_grocers(t)
-	_survey()  # one-off, removed after CI
 
 
 # ---------------------------------------------------------------- staging
@@ -300,11 +299,11 @@ func _during_the_shift(t) -> void:
 
 
 # ---------------------------------------------------------------- whole towns
-func _old_deadlock(t) -> void:
-	t.begin("the old deadlock, replayed: both shop workers out of food on a Monday morning, and the shop trades on")
-	var seed := _town("apart")
-	var sim = Simulation.new({"seed": seed, "days": 30, "profile": "normal"})
-	sim.run(SimClock.at(8, 7))  # Monday Day 8, 07:00
+func _monday_without_food(seed: int, fixed: bool) -> Array:
+	## The town of ``seed`` (normal season) run to Monday Day 8, 07:00, when the grocer's, the assistant's and one
+	## customer's households are found with empty pantries, then on through the 8:00 hour: [sim, customer].
+	var sim = Simulation.new({"seed": seed, "days": 30, "profile": "normal", "shop_self_service": fixed})
+	sim.run(SimClock.at(8, 7))
 	var g := _grocer(sim)
 	var a := _assistant(sim)
 	var customer := ""
@@ -315,11 +314,34 @@ func _old_deadlock(t) -> void:
 	for rid in [g, a, customer]:
 		_empty(sim, rid)
 	sim.run(SimClock.at(8, 9))  # the 8:00 hour
-	var shopping := 0
-	for rid in [g, a]:
-		if sim.plans.get(rid, {}).get("kind", "") == "shop":
-			shopping += 1
-	t.eq(shopping, 2, "both shop workers go shopping in their own shop, as in Python's deadlock")
+	return [sim, customer]
+
+
+static func _both_shopping(sim) -> bool:
+	return (sim.plans.get(_grocer(sim), {}).get("kind", "") == "shop"
+			and sim.plans.get(_assistant(sim), {}).get("kind", "") == "shop")
+
+
+func _old_deadlock(t) -> void:
+	t.begin("the old deadlock, replayed: both shop workers out of food on a Monday morning; Python's rule stalls, the fix trades on")
+	var seed := _town("apart")
+	# Python's rule: the trap closes, and nobody in town buys food again that month
+	var old: Array = _monday_without_food(seed, false)
+	t.check(_both_shopping(old[0]), "under Python's rule, both shop workers go shopping in their own shop")
+	old[0].run()
+	var after := 0
+	for ev in _of_kind(old[0], "purchase"):
+		if ev["time"] >= SimClock.at(8, 8):
+			after += 1
+	t.eq(after, 0, "under Python's rule, not one sale from that Monday to the end of the month")
+	t.check(TestSim._stall_day(old[0]) > 0, "under Python's rule, the month stalls")
+	# the fix: the same morning, and the shop trades on
+	var replay: Array = _monday_without_food(seed, true)
+	var sim = replay[0]
+	var customer: String = replay[1]
+	var g := _grocer(sim)
+	var a := _assistant(sim)
+	t.check(_both_shopping(sim), "with the fix, the same trap opens: both shop workers go shopping in their own shop")
 	var self_served := []
 	for ev in _of_kind(sim, "purchase"):
 		if ev["time"] >= SimClock.at(8, 8) and ev["data"].get("self_service", false):
@@ -427,35 +449,3 @@ func _solitary_grocers(t) -> void:
 	t.check(towns > 0 and empty * 4 < openings, "a solitary grocer's pantry is empty on %d of %d shop days" % [empty, openings])
 	t.end()
 
-
-@warning_ignore("integer_division")
-func _survey() -> void:
-	## One-off: the 40-town-per-season stall survey of CI run 42, run again with the fix.
-	for layer in ["off", "crime"]:
-		for profile in TestSim.PROFILES:
-			var stalled := PackedStringArray()
-			var self_service := 0
-			var both := 0
-			var solo := [0, 0]
-			var started := Time.get_ticks_msec()
-			for seed in range(1, 41):
-				var sim = Simulation.new({"seed": seed, "days": 30, "profile": profile, "crime": layer == "crime"}).run()
-				var d: int = TestSim._stall_day(sim)
-				if d > 0:
-					stalled.append("seed %d from Day %d" % [seed, d])
-				var hours := {}
-				for ev in sim.events.events:
-					if ev["kind"] == "purchase" and ev["data"].get("self_service", false):
-						self_service += 1
-						var h: int = ev["time"] / 60
-						hours[h] = int(hours.get(h, 0)) + 1
-				for h in hours:
-					if hours[h] >= 2:
-						both += 1
-				if _household_size(sim, _grocer(sim)) == 1:
-					var oe := empty_at_opening(sim)
-					solo[0] += oe[0]
-					solo[1] += oe[1]
-			print("  grocery survey %s %s: %d of 40 months stalled %s; %d self-service sales; %d hours with both shop workers serving themselves; solitary grocers' pantry empty on %d of %d shop days; %d ms" % [
-					layer, profile, stalled.size(), ", ".join(stalled), self_service, both, solo[1], solo[0],
-					Time.get_ticks_msec() - started])

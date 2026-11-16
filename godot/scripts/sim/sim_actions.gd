@@ -91,7 +91,7 @@ static func do_work(sim, r, ta: int) -> void:
 		for cid in ["till:" + place, "stock:" + place]:
 			if sim.world.containers.has(cid):
 				sim.count_container(sim.world.containers[cid], r.id, ta)
-	if place == "grocery":
+	if place == "grocery" and sim.self_service_on:
 		_provision(sim, r, ta)
 
 
@@ -179,8 +179,8 @@ static func shop(sim, r, ta: int) -> void:
 	## are both empty go shopping in their own shop, neither counts as serving, and nobody in town can buy food
 	## again (the grocery deadlock; a deliberate difference, docs/godot-simulation-migration.md).
 	var staff := _staff_other_than(sim, "grocery", r.id, ta)
-	var self_service: bool = (staff.is_empty() and r.id in sim.world.locations["grocery"]["staff"]
-			and sim.business_open("grocery", ta))
+	var self_service: bool = (sim.self_service_on and staff.is_empty()
+			and r.id in sim.world.locations["grocery"]["staff"] and sim.business_open("grocery", ta))
 	if staff.is_empty() and not self_service:
 		return
 	var shopped_key: String = "shopped:" + r.household
