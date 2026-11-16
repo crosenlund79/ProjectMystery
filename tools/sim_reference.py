@@ -213,25 +213,50 @@ LAYERS = {"off": "off (no stealing, falls, collisions; violent escalations count
           "crime": "on: stealing, fights, falls, collisions and all that follows"}
 
 
+def stall_day(sim: Simulation) -> int:
+    """The day from which the grocery made no sale to the end of the run (at least four days before the end), or -1.
+
+    The grocery stalls when, on a morning it opens, the grocer's and the assistant's households both have an empty
+    pantry and both prefer shopping to work: each goes shopping in their own shop, neither counts as serving, and
+    nobody can buy again. Measured the same way in godot/tests/test_sim.gd (``_stall_day``).
+    """
+    days = sim.t // DAY
+    per_day: dict[int, int] = {}
+    for ev in sim.log.events:
+        if ev.kind == "purchase":
+            per_day[ev.time // DAY + 1] = per_day.get(ev.time // DAY + 1, 0) + 1
+    for d in range(1, days - 3):
+        if all(per_day.get(x, 0) == 0 for x in range(d, days + 1)):
+            return d
+    return -1
+
+
 def reference(mode: str = "off") -> dict:
     crime_layer(mode)
     result = {"generated_by": "tools/sim_reference.py", "days": DAYS, "seeds": SEEDS, "residents": 10,
               "crime_layer": LAYERS[mode], "profiles": {}}
     for profile in PROFILES:
         runs = []
+        trading = []
         deferred = 0
         for seed in SEEDS:
             sim = Simulation(SimConfig(seed=seed, days=DAYS, profile=profile, residents=10)).run()
             runs.append(stats(sim, mode != "off"))
+            if stall_day(sim) < 0:
+                trading.append(runs[-1])
             deferred += sim.stats["escalations_deferred"]
         keys = sorted(runs[0])
 
-        def defined(k):  # -1 marks a value a run cannot have (no arguments, no loans asked for)
-            return [r[k] for r in runs if r[k] >= 0] or [-1.0]
+        def defined(k, among=runs):  # -1 marks a value a run cannot have (no arguments, no loans asked for)
+            return [r[k] for r in among if r[k] >= 0] or [-1.0]
         result["profiles"][profile] = {
             "mean": {k: round(statistics.fmean(defined(k)), 5) for k in keys},
             "sd": {k: round(statistics.pstdev(defined(k)), 5) for k in keys},
             "escalations_deferred_per_run": round(deferred / len(SEEDS), 2),
+            # the months in which the grocery kept trading to the end (see stall_day), and statistics over them
+            "stalled_months": len(runs) - len(trading),
+            "mean_trading": {k: round(statistics.fmean(defined(k, trading)), 5) for k in keys},
+            "sd_trading": {k: round(statistics.pstdev(defined(k, trading)), 5) for k in keys},
         }
     return result
 

@@ -74,8 +74,13 @@ The town simulation is moving into Godot as well, with no Python at all. It live
 - Pilot 1: residents living in a town.
 - Pilot 2: what they see, hear, remember, get wrong and tell each other.
 - Pilot 3A: theft and financial incidents: who steals and why, hidden loot, losses found when the till is
-  counted, traces, the incident registry, and whom the town wrongly or rightly suspects. It is behind a `crime`
-  switch, off by default.
+  counted, traces, the incident registry, and whom the town wrongly or rightly suspects.
+- Pilot 3B: violence and accidents: fights, injuries and rare deaths, drunken falls, collisions on Mill Road,
+  vehicle damage, the clinic and the workshop, people found hurt or missed, and what each person saw, was told,
+  or got wrong about it.
+
+The crime layer (pilots 3A and 3B) is behind a `crime` switch, off by default; `"violence": false` keeps only
+pilot 3A.
 
 [`docs/godot-simulation-migration.md`](docs/godot-simulation-migration.md) has the module map, the boundaries,
 the test results and the next step. To watch a town live for two weeks, headless, with how its news got round:
@@ -84,7 +89,8 @@ the test results and the next step. To watch a town live for two weeks, headless
 godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal --out=sim-demo
 ```
 
-A month of hard times with the crime layer on, with the truth about each theft set against what the town believes:
+A month of hard times with the crime layer on, with the truth about each theft, fight, fall and collision set
+against what the town believes (add `--violence=off` for thefts only):
 
 ```bash
 godot --headless --path godot -s res://tests/run_sim.gd -- --seed=21 --days=30 --profile=tension --crime

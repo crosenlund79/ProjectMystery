@@ -72,10 +72,9 @@ func run(t, _tree) -> void:
 	var crime_runs := _runs(CRIME_SEEDS, "crime")
 	_integrity(t, crime_runs)
 	_daily_life(t, crime_runs)
-	_matches_python(t, crime_runs, CRIME_REFERENCE, "crime-vs-python")
+	_matches_python(t, crime_runs, CRIME_REFERENCE, "crime-vs-python", true)
 	_violence_rate(t, crime_runs)
 	_golden(t)
-	_stall_survey()
 
 
 func _reproducible(t) -> void:
@@ -122,17 +121,12 @@ func _runs(seeds: Array, layer: String) -> Array:
 						counts.get("assault", 0), counts.get("fall", 0), counts.get("collision", 0), _fled(sim),
 						counts.get("death", 0), counts.get("treated", 0), counts.get("repair", 0),
 						counts.get("injury_found", 0), counts.get("body_found", 0)]
+			var stall := _stall_day(sim)
+			if stall > 0:
+				detail += "; the grocery stalled from Day %d (its staff went shopping in their own shop)" % stall
 			print("  simulated %s seed %d%s: %d days, %d events, %d ms%s" % [profile, seed,
 					{"off": "", "theft": ", crime on, violence off", "crime": ", crime on"}[layer], DAYS,
 					sim.events.events.size(), Time.get_ticks_msec() - started, detail])
-			if layer != "off" and sim.samples["hunger"] / maxf(1.0, float(sim.samples["hours"])) > 35:
-				print("  stalled shop %s seed %d (%s): %s" % [profile, seed, layer, _stalled_shop({"seed": seed,
-						"days": DAYS, "profile": profile, "crime": true, "violence": layer == "crime"}, sim)])
-				var plain = Simulation.new({"seed": seed, "days": DAYS, "profile": profile}).run()
-				print("  hungry month %s seed %d (%s): %s; the same town without crime: hunger %.0f, %d purchases" % [
-						profile, seed, layer, _hungry_month(sim),
-						plain.samples["hunger"] / maxf(1.0, float(plain.samples["hours"])),
-						plain.events.counts().get("purchase", 0)])
 			runs.append({"profile": profile, "seed": seed, "sim": sim, "crime": layer != "off", "layer": layer})
 	return runs
 
@@ -169,115 +163,6 @@ static func _stall_day(sim) -> int:
 		if none:
 			return d
 	return -1
-
-
-func _stall_survey() -> void:
-	## One-off: how often the grocery stalls, over 40 towns per season, with the crime layer off and on.
-	for layer in ["off", "crime"]:
-		for profile in PROFILES:
-			var stalled := PackedStringArray()
-			var exposed := 0
-			for seed in range(1, 41):
-				var sim = Simulation.new({"seed": seed, "days": DAYS, "profile": profile, "crime": layer == "crime"}).run()
-				var sizes := PackedStringArray()
-				var two := true
-				for rid in sim.world.locations["grocery"]["staff"]:
-					var n: int = sim.households[sim.residents[rid].household].size()
-					sizes.append("%s %d" % [sim.residents[rid].role, n])
-					two = two and n >= 2
-				exposed += 1 if two else 0
-				var d := _stall_day(sim)
-				if d > 0:
-					stalled.append("seed %d from Day %d (%s)" % [seed, d, ", ".join(sizes)])
-			print("  stall survey %s %s: %d of 40 months stalled; %d towns where both grocery staff live in households of two or more; %s" % [
-					layer, profile, stalled.size(), exposed, "; ".join(stalled)])
-
-
-static func _stalled_shop(cfg: Dictionary, sim) -> String:
-	## The morning the grocery stopped selling for good, hour by hour: the grocery's staff and the grocer's
-	## household, what each planned and where they were, their household's pantry, hunger, cash and injury.
-	var first := _stall_day(sim)
-	if first < 0:
-		return "the shop never stopped selling"
-	while SimClock.is_rest_day((first - 1) * SimClock.DAY):
-		first += 1
-	var grocer: String = sim.world.containers["till:grocery"]["owners"][0]
-	var people: Array = Array(sim.world.locations["grocery"]["staff"]).duplicate()
-	for m in sim.households[sim.residents[grocer].household]:
-		if not (m in people):
-			people.append(m)
-	var x = Simulation.new(cfg)
-	var start: int = (first - 1) * SimClock.DAY
-	x.run(start + 7 * 60)
-	var out := PackedStringArray(["from Day %d" % first])
-	for h in range(7, 18):
-		x.run(start + (h + 1) * 60)
-		var parts := PackedStringArray(["%d:00 staff %s" % [h, JSON.stringify(x.staff_at("grocery", start + h * 60 + 30))]])
-		for rid in people:
-			var r = x.residents[rid]
-			var pl = x.plans.get(rid)
-			parts.append("%s (%s, %s, diligence %.2f) %s@%s pantry %d hunger %.0f cash %d injury %d" % [rid, r.role,
-					r.household, r.traits["diligence"], pl["kind"] if pl != null else "-",
-					x.where(rid, start + h * 60 + 59), x.pantry(r)["food"], r.hunger, r.cash, r.injury])
-		out.append(" | ".join(parts))
-	return "; ".join(out)
-
-
-static func _hungry_month(sim) -> String:
-	## Day by day: purchases (p), hours the grocer spent in the shop when it was open (g), the town's mean wallet at
-	## the end of the day (w) and how many could not afford a unit of food (b); then what the grocer did instead.
-	var grocer: String = sim.world.containers["till:grocery"]["owners"][0]
-	var price: int = sim.profile["food_price"]
-	var bought := {}
-	var doing := {}
-	for ev in sim.events.events:
-		var d: int = SimClock.day_of(ev["time"])
-		if ev["kind"] == "purchase":
-			bought[d] = int(bought.get(d, 0)) + 1
-		if grocer in ev["actors"] and not (ev["kind"] in ["move", "meal", "purchase", "drink", "chat"]):
-			doing[ev["kind"]] = int(doing.get(ev["kind"], 0)) + 1
-	var wallets := {}
-	for rid in sim.ids:
-		wallets["wallet:" + rid] = int(sim.initial_balances["wallet:" + rid]["cash"])
-	var hid: String = sim.residents[grocer].household
-	var pantry_acct := "box:pantry:" + hid
-	var larder: int = sim.initial_balances[pantry_acct]["food"]
-	var transfers: Array = sim.world.transfers
-	var i := 0
-	var days := PackedStringArray()
-	for d in range(1, int(sim.config["days"]) + 1):
-		var end: int = d * SimClock.DAY
-		while i < transfers.size() and int(transfers[i]["time"]) < end:
-			var tr: Dictionary = transfers[i]
-			if tr["asset"] == "food":
-				if tr["src"] == pantry_acct:
-					larder -= int(tr["amount"])
-				if tr["dst"] == pantry_acct:
-					larder += int(tr["amount"])
-			if tr["asset"] == "cash":
-				if wallets.has(tr["src"]):
-					wallets[tr["src"]] -= int(tr["amount"])
-				if wallets.has(tr["dst"]):
-					wallets[tr["dst"]] += int(tr["amount"])
-			i += 1
-		var total := 0
-		var broke := 0
-		for k in wallets:
-			total += wallets[k]
-			if wallets[k] < price:
-				broke += 1
-		var hours := 0
-		if not SimClock.is_rest_day(end - SimClock.DAY):
-			for h in range(8, 18):
-				if sim.where(grocer, SimClock.at(d, h, 30)) == "grocery":
-					hours += 1
-		days.append("D%d %dp/%dg/%dw/%db/%df" % [d, int(bought.get(d, 0)), hours, total / maxi(1, wallets.size()), broke,
-				larder])
-	var family := PackedStringArray()
-	for m in sim.households[hid]:
-		family.append("%s %s" % [m, sim.residents[m].role])
-	return "%s; the grocer otherwise: %s; grocer's household %s (f = its pantry), diligence %.2f" % [" ".join(days),
-			JSON.stringify(doing), ", ".join(family), sim.residents[grocer].traits["diligence"]]
 
 
 static func _fled(sim) -> int:
@@ -396,10 +281,13 @@ static func _tolerance(key: String, mean: float, sd: float) -> float:
 	return maxf(maxf(0.25 * absf(mean), 2.5 * sd), least)
 
 
-func _matches_python(t, runs: Array, reference: String, label: String) -> void:
+func _matches_python(t, runs: Array, reference: String, label: String, trading_only := false) -> void:
+	## trading_only: compare the months in which the grocery kept trading to the end, on both sides (a stalled
+	## month, see _stall_day, is an absorbing state of the shared rules that dominates a season's mean of five
+	## months), and report how often it stalled on each side.
 	t.begin("behaviour matches the Python simulation (%s)" % {REFERENCE: "crime layer off on both sides",
 			THEFT_REFERENCE: "stealing on, violence and accidents off on both sides",
-			CRIME_REFERENCE: "the whole crime layer on both sides"}[reference])
+			CRIME_REFERENCE: "the whole crime layer on both sides, months in which the grocery kept trading"}[reference])
 	var text := FileAccess.get_file_as_string(reference)
 	var ref = JSON.parse_string(text)
 	t.check(ref is Dictionary and ref.has("profiles"), "no reference statistics in " + reference)
@@ -410,9 +298,16 @@ func _matches_python(t, runs: Array, reference: String, label: String) -> void:
 	for profile in PROFILES:
 		var sums := {}
 		var counts := {}
+		var stalled := 0
+		var months := 0
 		for rn in runs:
 			if rn["profile"] != profile:
 				continue
+			months += 1
+			if _stall_day(rn["sim"]) > 0:
+				stalled += 1
+				if trading_only:
+					continue
 			var flat := SimCheck.flatten(SimCheck.stats(rn["sim"]))
 			for k in flat:
 				if flat[k] < 0:
@@ -420,15 +315,20 @@ func _matches_python(t, runs: Array, reference: String, label: String) -> void:
 				sums[k] = float(sums.get(k, 0.0)) + flat[k]
 				counts[k] = int(counts.get(k, 0)) + 1
 		var py: Dictionary = ref["profiles"][profile]
-		var keys: Array = py["mean"].keys()
+		print("  %s %-9s the grocery stalled in %d of %d months (python: %d of %d)%s" % [label, profile, stalled,
+				months, int(py.get("stalled_months", 0)), Array(ref["seeds"]).size(),
+				"; compared: the months it kept trading" if trading_only else ""])
+		var mean_key := "mean_trading" if trading_only else "mean"
+		var sd_key := "sd_trading" if trading_only else "sd"
+		var keys: Array = py[mean_key].keys()
 		keys.sort()
 		for k in keys:
-			var theirs: float = py["mean"][k]
+			var theirs: float = py[mean_key][k]
 			if theirs < 0 or not counts.has(k):
 				print("  %s %-9s %-34s (no runs where it is defined)" % [label, profile, k])
 				continue
 			var mine: float = float(sums[k]) / counts[k]
-			var tol := _tolerance(k, theirs, py["sd"][k])
+			var tol := _tolerance(k, theirs, py[sd_key][k])
 			var close := absf(mine - theirs) <= tol
 			var core: bool = k in CORE
 			print("  %s %-9s %-34s godot %9.4f  python %9.4f  (allowed +/- %.4f)  %s" % [label, profile, k, mine,
