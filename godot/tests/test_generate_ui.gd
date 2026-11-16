@@ -144,6 +144,7 @@ func _wait(max_frames := 20000) -> Dictionary:
 	## Let the generation run, frame by frame, as the game does. Returns what was seen meanwhile.
 	var seen := {"frames": 0, "bars": [], "texts": [], "engine_seen": false, "town_map_seen": false}
 	var scr = _screen()
+	var job = scr.job
 	while scr.view == "running" and seen["frames"] < max_frames:
 		await tree.process_frame
 		seen["frames"] += 1
@@ -154,6 +155,10 @@ func _wait(max_frames := 20000) -> Dictionary:
 		if scr.view == "running" and seen["frames"] % 5 == 1:
 			seen["bars"].append([int(scr.job.attempt), float(_find("GenerateProgress").value)])
 			_labels(scr, seen["texts"])
+	if job != null:
+		print("  GENERATE UI request (seed %d, %s, %d residents, %d days): %s after %d town(s), %d units of work over %d frames, longest unit %d ms" % [
+				job.first_seed, job.profile, job.residents, job.days, job.status, job.attempt, job.steps, seen["frames"],
+				job.longest_step_ms])
 	return seen
 
 
@@ -210,11 +215,10 @@ func _before() -> Dictionary:
 	main.open_case(bundled, true)
 	await _frames(1)
 	main.engine.note("Made before any mystery was generated.")
-	main.persist()
-	var save_text := FileAccess.get_file_as_string(main.saves.save_path(bundled["case_id"]))
-	t.check(save_text != "", "the bundled case was not saved")
-	main.show_main_menu()
+	main.show_main_menu()  # saves it, as leaving a case does
 	await _frames(1)
+	var save_text := FileAccess.get_file_as_string(main.saves.save_path(bundled["case_id"]))
+	t.check(save_text.contains("Made before any mystery was generated."), "the bundled case was not saved")
 	var folder := ProjectSettings.globalize_path("res://") + "../import-test-cases/"
 	var imported := ""
 	var d := DirAccess.open(folder)
@@ -335,7 +339,8 @@ func _generate() -> String:
 	t.eq(Verdict.unseal_count, sealed_before, "a case was revealed while generating")
 	# no concurrent gameplay
 	t.check(not seen["engine_seen"] and not seen["town_map_seen"], "an investigation was open during generation")
-	t.check(seen["frames"] >= 20, "the screen was not redrawn while generating (%d frames)" % seen["frames"])
+	t.check(seen["frames"] >= 2 and job.steps > seen["frames"], "the work was not spread over frames (%d frames, %d units)"
+			% [seen["frames"], job.steps])
 	t.check(job.longest_step_ms < 2000, "the screen froze for %d ms" % job.longest_step_ms)
 	# the bar shows the town's days, rising
 	var last := -1.0

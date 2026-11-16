@@ -307,12 +307,44 @@ A case that fails any step is rejected, with the reason. Nothing is ever added t
 - the number of times the seal has been opened (`Verdict.unseal_count`) is unchanged by its work;
 - in a full game, the seal is opened only at the reveal.
 
+## In the game: New Case > Generate Mystery
+
+The generator is in the game's menus (`scripts/ui/generate_screen.gd`, on top of
+`scripts/cases/case_generation_job.gd`). It is a dedicated menu operation: no investigation is open and no other
+town is simulated meanwhile.
+- **Settings:** town size (8, 10 or 12 residents, default 10), conditions (normal, scarcity, crisis, tension),
+  days to simulate (14-120, default 60), an optional seed (random when empty), and how many towns to try at
+  most (1-40, default 12).
+- **The work:** one request is done a little at a time, without threads. The screen gives it 12 ms a frame, in
+  whole units:
+  - an hour of the town;
+  - freezing a case candidate;
+  - packaging it;
+  - questioning one resident;
+  - the investigator's conclusion and the sealed check;
+  - saving.
+
+  Towns are tried seed after seed (the chosen seed, then the next ones). In each town, every candidate is
+  judged as soon as the investigator would arrive, exactly as `case_generate.gd` judges it, and the first that
+  passes is kept. The town is simulated no further than needed: the case is frozen at its start, so it is the
+  same as a whole run gives.
+- **What is shown:** the town number, the seed, the day (as a progress bar), what is being done, and how many
+  possible cases have been looked at. Never a culprit, a motive, an incident or anything sealed.
+- **Cancel** takes effect between units, at once. Nothing has been written by then.
+- **Saving:** only a case that passed the gate is saved, written whole (to a `.part` file, checked, then
+  renamed) into the player's case folder.
+  - It is never written over a different file of the same name; that case is passed over and the search goes on.
+  - The same case already there is recognised and offered as it is, not written again.
+  - The case library lists it as "generated", with its seed, beside the bundled and imported cases.
+- **After a mystery is found:** Investigate, Generate Another (the same settings; cases already in the library
+  are not offered again), or Case Library.
+- **If every town fails:** the reason, then Retry (the next towns) or Back.
+
 ## What waits for later pilots
 
 With pilot 4B, nothing in Python is needed any more to make or play a case. What remains is product work, not
 migration:
-- a way for the player to ask for a new generated case (a menu entry, progress while a town runs);
-- difficulty settings;
+- difficulty settings and custom generation settings (the next iteration);
 - more cases per month, and better ones (see the [recommendation](#next-after-pilot-4b));
 - an installer.
 

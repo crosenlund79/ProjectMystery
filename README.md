@@ -23,9 +23,9 @@ The game needs no Python, no installer, no internet connection and no accounts o
 3. Double-click **`ProjectMystery.exe`**. If Windows shows "Windows protected your PC", choose **More info → Run
    anyway**. The game is not code-signed yet.
 
-Choose **New Case** and pick one of the 15 bundled cases, each taken from its own simulated history. You
-arrive in the town square, with the town laid out as a small map. Click a building to go there, and see who is
-there:
+Choose **New Case** and pick one of the 15 bundled cases, each taken from its own simulated history, or
+generate a new mystery (below). You arrive in the town square, with the town laid out as a small map. Click a
+building to go there, and see who is there:
 
 * talk to people face to face: everyone has a face of their own that reacts to what you ask (but never to
   whether they did it). People answer briefly, about the time in question, with everyday things summed up.
@@ -50,6 +50,25 @@ person, when they clash and by how much. It tells firm contradictions apart from
 secondhand accounts and mere differences in people's approximate times. A short opening sets the scene the
 first time you play. All pictures, the opening and the chime can be replaced with your own: see
 `godot/art/README.md`. Ten extra cases for trying the importer are in `import-test-cases/`.
+
+**Generate a new mystery.** On the New Case screen, choose **Generate Mystery…**:
+1. Pick the town size (8, 10 or 12 residents), the conditions (normal, scarcity, crisis or tension) and how
+   many days to simulate (60 by default).
+2. Optionally type a seed: the same seed and settings always give the same mystery. Leave it empty for a random
+   town.
+3. Press **Generate**. The game simulates the town day by day, with a progress bar. Each time something happens
+   that could become a case, it checks that the case can be solved from what you will be able to find out.
+   Nothing about the case is shown while this runs.
+4. A town often gives no fair mystery, so the next seed is tried automatically, up to the number of towns you
+   chose (12 by default). It usually takes from a few seconds to a minute or two.
+5. **Cancel** stops it at once, and nothing is saved. If no town gives a mystery, choose **Retry** for new
+   towns, or **Back** to change the settings (troubled and lean seasons give more).
+6. When a mystery is found, it is saved in your case library, marked "Generated here" with its seed. Choose
+   **Investigate** to begin, **Generate Another** for a different one with the same settings, or **Case
+   Library** to see it beside the others.
+
+Generated cases play, save and reveal exactly like the bundled ones. They are stored as `.mcase` files in the
+game's `cases` folder (on Windows, `%APPDATA%\ProjectMystery\cases`).
 
 Press **T**, or the **Tablet** button, for your investigator's tablet: case notes, the notebook, evidence,
 everyone you have met and what they said, the timeline, which flags accounts that cannot both be true, hints,
