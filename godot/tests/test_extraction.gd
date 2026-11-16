@@ -167,7 +167,11 @@ func _testimony(t, months: Array) -> void:
 						counts["wrong_time"] += 1
 					elif a["error"] == "wrong suspect":
 						counts["wrong_suspect"] += 1
-						t.check("misleading" in a["supports"], "%s: a wrong suspicion not marked misleading" % it["key"])
+						# wrong about the incident it is about; pointing at anyone but this case's culprit, it misleads
+						var suspect = sim.beliefs[a["belief"]]["claim"]["subject"]
+						if suspect != inc["responsible"]:
+							t.check("misleading" in a["supports"], "%s: a wrong suspicion not marked misleading" % it["key"])
+						t.check(not ("suspicion_correct" in a["supports"]), "%s: a wrong suspicion marked correct" % it["key"])
 				if it["guarded"] and a["withheld_reason"] == "loyalty":
 					counts["loyal_guarded"] += 1
 				if a.get("lie", false):
@@ -264,25 +268,37 @@ func _undiscovered(t, months: Array) -> void:
 
 
 func _example(months: Array) -> void:
-	## One case, as the investigator would meet it (the hook, a few statements) and as it really was.
+	## One case, as the investigator would meet it and as it really was: the hook, the culprit's own account of
+	## where they were, what others say about the time in question, and how much is withheld.
 	for mc in _all_cases(months):
 		var c: Dictionary = mc[1]
-		if not c["eligibility"]["eligible"] or c["truth"]["incident"]["family"] != "theft":
+		var truth: Dictionary = c["truth"]
+		var culprit = truth["answer"]["responsible"]
+		if not c["eligibility"]["eligible"] or truth["incident"]["family"] != "theft" \
+				or not c["investigation"]["testimony"].has(culprit):
 			continue
 		var inv: Dictionary = c["investigation"]
-		var truth: Dictionary = c["truth"]
+		var audit: Dictionary = truth["testimony_audit"]
 		print("  EXAMPLE %s: %s — %s" % [c["case_id"], inv["hook"]["title"], inv["hook"]["text"]])
-		print("  EXAMPLE truth: %s" % truth["narrative"])
+		print("  EXAMPLE sealed truth: %s" % truth["narrative"])
+		for it in inv["testimony"][culprit]["items"]:
+			if "whereabouts" in it["topics"] and not it.has("in"):
+				print("  EXAMPLE %s (the culprit) says: %s   [sealed: %s]" % [culprit, it["text"], audit[it["key"]]["status"]])
 		var shown := 0
 		for rid in inv["testimony"]:
 			for it in inv["testimony"][rid]["items"]:
-				var a: Dictionary = truth["testimony_audit"][it["key"]]
-				if a.get("summary", false) or shown >= 8:
+				var a: Dictionary = audit[it["key"]]
+				if rid == culprit or a.get("summary", false) or shown >= 6 or not ("window" in it["topics"]):
 					continue
-				if a["status"] != "accurate" or "window" in it["topics"]:
-					print("  EXAMPLE %s says: %s   [sealed: %s%s]" % [rid, it["text"], a["status"],
-							(", " + String(a["error"])) if a["error"] != null else ""])
-					shown += 1
+				print("  EXAMPLE %s says: %s   [sealed: %s%s]" % [rid, it["text"], a["status"],
+						(", " + String(a["error"])) if a["error"] != null else ""])
+				shown += 1
+		var withheld := 0
+		for k in audit:
+			if String(k).begins_with("W-") and audit[k]["speaker"] == culprit:
+				withheld += 1
+		print("  EXAMPLE %s keeps %d things to themselves; evasive about %s" % [culprit, withheld,
+				JSON.stringify(inv["testimony"][culprit]["evasive_topics"])])
 		return
 
 
