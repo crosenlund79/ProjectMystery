@@ -6,8 +6,11 @@
 ## Decisions about people use only what the decider believes (scripts/sim/sim_memory.gd): whose hardship they
 ## know of, and whom they suspect of something they have a stake in.
 ##
-## Not here yet: stealing (the crime layer), the clinic and repairs (only needed after injuries and
-## collisions).
+## With crime on, wrongdoing is one more option (_steal_intent): it appears only when money pressure (or
+## hunger with an empty pantry and an empty purse), temperament and an opportunity line up, and it competes
+## with every lawful one. There is no rule like "desperate enough means steal".
+##
+## Not here yet (Pilot 3B): the clinic and repairs (only needed after injuries and collisions).
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
@@ -120,6 +123,12 @@ static func choose(sim, r, t: int) -> Dictionary:
 		if not social.is_empty():
 			cands.append(social)
 
+	# --- wrongdoing, only when pressure, temperament and an opportunity line up (crime layer)
+	if sim.crime_on:
+		var steal := _steal_intent(sim, r, t, pressure)
+		if not steal.is_empty():
+			cands.append(steal)
+
 	var best: Dictionary = cands[0]
 	for c in cands:
 		if ranks_before(c, best):
@@ -215,3 +224,64 @@ static func _social_intent(sim, r, t: int, pressure: float) -> Dictionary:
 		if r.cash >= 80 and rel["affection"] >= 0.5 and in_hardship.has(x) and not cooling(r, "help:" + x, t):
 			best = _consider(sim, best, "help", x, t, tr["empathy"] * rel["affection"] * 80)
 	return best
+
+
+static func _steal_intent(sim, r, t: int, pressure: float) -> Dictionary:
+	## Stealing as an option: only for someone under money pressure (or hungry with nothing to eat and nothing to
+	## pay with), not too honest, not cooling off from a recent attempt, with a drive that outweighs their
+	## morals, their caution and the fear of being caught again. Then the best opportunity at this hour: a
+	## business till (or the grocery's stock, when hungry) in the dead of night, or by day a house whose
+	## people are all at work. Spite for the owners makes a target more tempting.
+	var tr: Dictionary = r.traits
+	var hungry_and_broke: bool = sim.pantry(r)["food"] == 0 and r.cash < sim.profile["food_price"] and r.hunger > 60
+	if (pressure < 0.5 and not hungry_and_broke) or tr["honesty"] >= 0.72 or cooling(r, "steal", t):
+		return {}
+	var drive: float = pressure * 1.1 + r.intox / 150.0 + tr["impulsiveness"] * 0.3 + sim.profile["impulsive_shift"]
+	var moral: float = tr["honesty"] * 0.9 + tr["empathy"] * 0.25
+	var thefts := 0
+	for g in r.guilty_of:
+		if sim.events.by_id[g]["kind"] == "theft":
+			thefts += 1
+	var base: float = 100 * (drive - moral - tr["caution"] * 0.35 - 0.35 * thefts)
+	if base <= 0:
+		return {}
+	var h := SimClock.hour_of(t)
+	var night: bool = h >= 23 or h <= 3
+	var options := []  # [value, container, place]
+	if night:
+		for pair in [["till:grocery", 60.0], ["till:pub", 70.0]]:
+			var c: Dictionary = sim.world.containers[pair[0]]
+			var spite := 0.0
+			for o in c["owners"]:
+				if sim.residents[o].alive:
+					spite = maxf(spite, r.r(o)["resentment"])
+			options.append([pair[1] + 25 * spite, pair[0], c["location"]])
+		if hungry_and_broke:
+			options.append([70.0, "stock:grocery", "grocery"])
+	elif 10 <= h and h <= 15 and not SimClock.is_rest_day(t):
+		var hids: Array = sim.households.keys()
+		hids.sort()
+		for hid in hids:
+			if hid == r.household:
+				continue
+			var members := []
+			for m in sim.households[hid]:
+				if sim.residents[m].alive:
+					members.append(m)
+			if members.is_empty():
+				continue
+			var all_out := true
+			for m in members:
+				if not sim.on_shift(sim.residents[m], t):
+					all_out = false
+			if all_out:
+				var spite := 0.0
+				for m in members:
+					spite = maxf(spite, r.r(m)["resentment"])
+				options.append([40 + 25 * spite, "box:" + hid, "home:" + hid])
+	if options.is_empty():
+		return {}
+	options.sort_custom(func(a, b): return a[0] > b[0] or (a[0] == b[0] and a[1] < b[1]))
+	var best: Array = options[0]
+	var score: float = base + best[0] * 0.3 + (15.0 if night else 0.0)
+	return plan("steal", best[2], best[1], "pressure", clampf(score, 0.0, 200.0) + sim.rng.uniform(0, 8))

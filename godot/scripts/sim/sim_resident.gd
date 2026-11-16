@@ -31,6 +31,8 @@ var rel := {}  # other id -> {trust, affection, resentment}
 var vehicle := ""
 var pressures := []  # [time, event id] of things that went wrong for them
 var cooldowns := {}  # key -> minute until which they won't try that again
+var guilty_of := []  # event ids of their own wrongdoing (crime layer)
+var pending_hide := []  # thefts whose loot they have not yet hidden at home
 var worked_today := false
 
 

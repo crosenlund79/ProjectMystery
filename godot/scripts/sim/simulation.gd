@@ -1,7 +1,9 @@
 ## The town simulation (mirrors mystery/sim/engine.py). Each one-hour tick runs the same phases as Python:
 ## needs, scheduled duties (overdue debts, morning cash, rent, deliveries, layoffs), decisions, movement,
-## actions, closing time. Perception, memory, crime and evidence are later pilots
-## (docs/godot-simulation-migration.md). Headless: nothing here draws, plays or waits.
+## actions, closing time. With memory on, residents perceive, remember and gossip (Pilot 2); with crime on,
+## they may steal, losses are discovered at counting time, traces are left and noticed, and every incident is
+## registered (Pilot 3A). Violence and accidents are a later pilot (docs/godot-simulation-migration.md).
+## Headless: nothing here draws, plays or waits.
 ##
 ##   var sim = Simulation.new({"seed": 7, "days": 30, "profile": "normal", "residents": 10})
 ##   sim.run()
@@ -18,6 +20,7 @@ const Actions = preload("res://scripts/sim/sim_actions.gd")
 const Memory = preload("res://scripts/sim/sim_memory.gd")
 const Perception = preload("res://scripts/sim/sim_perception.gd")
 const Gossip = preload("res://scripts/sim/sim_gossip.gd")
+const Crime = preload("res://scripts/sim/sim_crime.gd")
 
 const DAY := 1440
 const TICK := 60
@@ -46,7 +49,9 @@ var known_hardship := {}  # memory off only: holder -> {subject: minute}, who sa
 var memory_on := true  # config "memory": perception, memory and gossip (Pilot 2)
 var memory := {}  # rid -> Memory: what each resident believes (scripts/sim/sim_memory.gd)
 var beliefs := {}  # belief id -> belief, every belief anyone ever formed
-var perceived := {}  # "rid|event id" -> "saw" or "heard": who noticed which event, and how
+var perceived := {}  # "rid|event id" -> "saw", "heard" or "trace": who noticed which event, and how
+var crime_on := false  # config "crime": theft, financial incidents, discovery and evidence (Pilot 3A)
+var incidents := []  # the incident registry (scripts/sim/sim_incidents.gd): developer-only truth
 var samples := {}  # hourly samples for the statistics (see _sample)
 var errors := []  # broken rules: a transfer that would go negative, a container that doesn't add up, ...
 var initial_balances := {}
@@ -72,6 +77,7 @@ func _init(cfg: Dictionary) -> void:
 	ids.sort()
 	events = EventLog.new()
 	memory_on = config["memory"]
+	crime_on = config["crime"]
 	for rid in ids:
 		intervals[rid] = [[residents[rid].home, 0, -1]]
 		pressure[rid] = 0.0
@@ -155,6 +161,36 @@ func box(r) -> Dictionary:
 	return world.containers["box:" + r.household]
 
 
+func stash(r) -> Dictionary:
+	## The thief's own hidden stash at home, made the first time they steal. It starts empty, like any account
+	## that existed from the start with nothing in it.
+	var cid: String = "stash:" + r.id
+	if not world.containers.has(cid):
+		world.add_container(cid, r.home, "%s's hidden stash" % r.first, [r.id])
+		world.containers[cid]["hidden"] = true
+		initial_balances["box:" + cid] = {"cash": 0, "food": 0}
+	return world.containers[cid]
+
+
+func present_during(rid: String, node: String, s: int, e: int) -> bool:
+	var ivs: Array = intervals[rid]
+	for i in range(ivs.size() - 1, maxi(-1, ivs.size() - 9), -1):
+		var iv: Array = ivs[i]
+		if iv[0] == node and iv[1] < e and (iv[2] < 0 or iv[2] > s):
+			return true
+	return false
+
+
+func visitors(node: String, s: int, e: int) -> Array:
+	## Everyone (alive, on their feet) who was at ``node`` at some point in [s, e).
+	var out := []
+	for rid in ids:
+		var r = residents[rid]
+		if r.alive and not r.down and present_during(rid, node, s, e):
+			out.append(rid)
+	return out
+
+
 func on_shift(r, tt: int) -> bool:
 	if not r.employed or r.shift.is_empty() or not r.alive:
 		return false
@@ -230,14 +266,24 @@ func transfer(asset: String, src: String, dst: String, amount: int, event_id: St
 
 
 func count_container(c: Dictionary, counter: String, tt: int) -> void:
-	## Someone counts a till, tin or pantry. In Python a shortfall here is how a theft is discovered; with no
-	## crime layer every count must match what its owners expect, to the crown and the unit.
-	if c["expected_cash"] != c["cash"] or c["expected_food"] != c["food"]:
+	## Someone counts a till, tin or stock. Without the crime layer every count must match what its owners
+	## expect, to the crown and the unit. With it, a container can be short only by what was stolen from it or
+	## written into its books twice since it was last counted; a shortfall of 5 crowns or 3 units is noticed
+	## (the loss is discovered), a smaller one is put down to miscounting and quietly written off.
+	var short_cash: int = c["expected_cash"] - c["cash"]
+	var short_food: int = c["expected_food"] - c["food"]
+	var explained := [0, 0]
+	if crime_on:
+		explained = Crime.unexplained_shortfall(self, c)
+	if short_cash != explained[0] or short_food != explained[1]:
 		fail("%s counted by %s holds %d cash and %d food; its owners expect %d and %d" % [c["label"], n(counter),
 				c["cash"], c["food"], c["expected_cash"], c["expected_food"]])
+	if crime_on and (short_cash >= 5 or short_food >= 3):
+		Crime.loss_discovered(self, c, counter, tt, maxi(0, short_cash), maxi(0, short_food))
 	c["expected_cash"] = c["cash"]
 	c["expected_food"] = c["food"]
 	c["last_check"] = tt
+	c["unexplained"] = []
 
 
 # ------------------------------------------------------------------- events
@@ -252,6 +298,8 @@ func emit(kind: String, location: String, actors: Array, opts := {}) -> Dictiona
 			"data": Dictionary(opts.get("data", {})).duplicate(true), "causes": causes,
 			"intent": String(opts.get("intent", "")), "audibility": int(opts.get("audibility", 0)),
 			"notable": bool(opts.get("notable", false)), "summary": String(opts.get("summary", ""))}
+	if opts.get("discreet", false):
+		ev["discreet"] = true  # done so as not to be seen: even someone there does not see it (only with crime on)
 	events.add(ev)
 	bump("event:" + kind)
 	return ev
@@ -457,6 +505,18 @@ func _morning_cash(r, tt: int) -> void:
 		return
 	if r.cash >= 25:
 		return
+	if crime_on:
+		# short of money, a thief quietly spends from the stash rather than the household tin
+		var sid: String = "stash:" + r.id
+		if world.containers.has(sid) and world.containers[sid]["cash"] > 0 and r.pending_hide.is_empty():
+			var hidden: Dictionary = world.containers[sid]
+			var amount := mini(40, hidden["cash"])
+			var ev := emit("stash_withdraw", r.home, [r.id], {"objects": [sid], "data": {"amount": amount},
+					"causes": r.guilty_of.slice(-1), "intent": "intentional", "discreet": true, "time": tt,
+					"summary": "%s quietly takes %d crowns from the hidden stash." % [r.first, amount]})
+			transfer("cash", "box:" + sid, "wallet:" + r.id, amount, ev["id"], tt)
+			hidden["expected_cash"] -= amount
+			return
 	count_container(tin, r.id, tt)
 	var take := mini(40, tin["cash"])
 	if take > 0:
@@ -692,6 +752,12 @@ func _end_of_tick(t0: int) -> void:
 	var h := SimClock.hour_of(t0)
 	if memory_on:
 		Perception.co_presence(self, tm)
+	if crime_on:
+		Crime.notice_evidence(self, t0)
+		for r in alive():
+			if not r.pending_hide.is_empty() and loc(r.id) == r.home and not r.down:
+				Crime.hide_loot(self, r, t0 + 55)
+		Crime.tidy_evidence(self, t0)
 	for place in ["grocery", "pub", "mill", "clinic", "workshop"]:
 		var hours: Array = world.locations[place]["hours"]
 		if not hours.is_empty() and h == hours[1] - 1:

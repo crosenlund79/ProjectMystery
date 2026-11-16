@@ -1,10 +1,11 @@
 ## Headless demonstration of the native town simulation (no Python, no rendering, no network):
 ##   godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal
-##       [--residents=10] [--memory=off] [--out=<folder>] [--golden]
+##       [--residents=10] [--memory=off] [--crime] [--out=<folder>] [--golden]
 ## Prints the town, its people, the first day hour by hour, a line per day, the end state, the integrity
 ## checks and the event-log digest; --out writes the whole history as JSON; --golden checks the pinned
-## digests in tests/sim_golden.json (the same check the Windows tests make). Exit code 0 only if every check
-## passed.
+## digests in tests/sim_golden.json (the same check the Windows tests make); --crime turns on theft, financial
+## incidents, discovery and evidence (Pilot 3A) and prints what really happened against what the town came to
+## believe. Exit code 0 only if every check passed.
 extends SceneTree
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -35,6 +36,8 @@ func _initialize() -> void:
 			golden = true
 		elif a == "--memory=off":
 			cfg["memory"] = false
+		elif a == "--crime":
+			cfg["crime"] = true
 	for path in TestSim.SCRIPTS:
 		var script = load(path)
 		if script == null or not script.can_instantiate():
@@ -56,6 +59,8 @@ func _initialize() -> void:
 	_end_state(sim)
 	if sim.memory_on:
 		_knowledge(sim)
+	if sim.crime_on:
+		_crime(sim)
 	var problems: Array = SimCheck.problems(sim)
 	print("\nIntegrity: %s" % ("all checks passed (money, places, people, debts, event order)" if problems.is_empty()
 			else "%d PROBLEMS" % problems.size()))
@@ -233,6 +238,58 @@ func _knowledge(sim) -> void:
 			SimClock.day_of(sim.t)])
 
 
+func _crime(sim) -> void:
+	## The truth about every incident, which no resident sees whole, set against what the town came to believe:
+	## who found it, who suspected whom (rightly or not), and what traces were left.
+	print("\nIncidents (the truth: developer-only):")
+	if sim.incidents.is_empty():
+		print("  none")
+	for inc in sim.incidents:
+		var core: Dictionary = sim.events.by_id[inc["core_event"]]
+		var found := "never discovered"
+		if inc["discovered_at"] != null:
+			found = "discovered %s by %s" % [_when(inc["discovered_at"]), sim.n(inc["discovered_by"])]
+		print("  %s %s, %s: %s %s%s" % [inc["id"], inc["family"], _when(core["time"]), core["summary"], found,
+				"; owned up to" if inc["reported_openly"] else ""])
+		var knew := {}
+		var guesses := []
+		for bid in sim.beliefs:
+			var b: Dictionary = sim.beliefs[bid]
+			var c: Dictionary = b["claim"]
+			if c["kind"] == "loss" and inc["discovery_event"] != null:
+				var root: Dictionary = SimCheck._root(sim, b)
+				if root["event"] == inc["discovery_event"]:
+					knew[b["holder"]] = true
+			elif c["kind"] == "suspect" and b["source"] == "inferred":
+				var about: Dictionary = SimCheck.incident_at(sim, c)
+				if not about.is_empty() and about["id"] == inc["id"]:
+					guesses.append("%s suspects %s (%s)" % [sim.n(b["holder"]), sim.n(c["subject"]),
+							"right" if c["subject"] == inc["responsible"] else "wrong"])
+		if inc["discovered_at"] != null:
+			print("      %d people came to know of the loss; %s" % [knew.size(), "; ".join(guesses) if not guesses.is_empty()
+					else "nobody suspected anyone"])
+	var counts: Dictionary = sim.events.counts()
+	print("  Accusations: %d.  Confessions: %d.  Attempts given up: %d.  Spent from hidden stashes: %d times." % [
+			_accusations(sim), counts.get("confession", 0), counts.get("theft_aborted", 0), counts.get("stash_withdraw", 0)])
+	if not sim.world.evidence.is_empty():
+		print("\nTraces:")
+	for e in sim.world.evidence:
+		var noticed := []
+		for rid in e["noticed_by"]:
+			noticed.append(sim.n(rid))
+		print("  %s %-11s %s, %s; noticed by %s%s" % [e["id"], e["kind"], sim.world.name_of(e["place"]),
+				_when(e["created_at"]), ", ".join(noticed) if not noticed.is_empty() else "nobody",
+				"; cleared away %s" % _when(e["removed_at"]) if e["removed_at"] >= 0 else ""])
+
+
+static func _accusations(sim) -> int:
+	var n := 0
+	for ev in sim.events.events:
+		if ev["kind"] == "argument" and ev["data"].get("reason", "") == "suspicion":
+			n += 1
+	return n
+
+
 func _export(sim, folder: String) -> void:
 	DirAccess.make_dir_recursive_absolute(folder)
 	var people := []
@@ -240,9 +297,10 @@ func _export(sim, folder: String) -> void:
 		people.append(sim.residents[rid].to_dict())
 	var data := {"config": sim.config, "profile": sim.profile, "town": sim.world.to_dict(), "residents": people,
 			"events": sim.events.events, "debts": sim.world.debts, "records": sim.world.records,
-			"beliefs": sim.beliefs.values(), "digest": sim.events.digest(), "statistics": SimCheck.stats(sim)}
-	var path := folder.path_join("simulation-seed%d-%s-%dd.json" % [sim.config["seed"], sim.config["profile"],
-			sim.config["days"]])
+			"beliefs": sim.beliefs.values(), "incidents": sim.incidents, "evidence": sim.world.evidence,
+			"digest": sim.events.digest(), "statistics": SimCheck.stats(sim)}
+	var path := folder.path_join("simulation-seed%d-%s-%dd%s.json" % [sim.config["seed"], sim.config["profile"],
+			sim.config["days"], "-crime" if sim.crime_on else ""])
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(data, " ", true))
 	f.close()

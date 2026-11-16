@@ -38,7 +38,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           python tools/sim_reference.py
-          git diff --exit-code godot/tests/sim_reference.json
+          git diff --exit-code godot/tests/sim_reference.json godot/tests/sim_reference_theft.json
 
   godot:
     name: Godot game - tests, Windows export, smoke test
@@ -151,7 +151,7 @@ jobs:
       - name: Simulation summary (repeated from the test log so it is easy to find)
         if: always()
         shell: bash
-        run: grep -E "simulated |sim-vs-python|GOLDEN|^== test_(sim|memory)|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
+        run: grep -E "simulated |sim-vs-python|crime-vs-python|whole months|GOLDEN|^== test_(sim|memory|crime)|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
 
   screens:
     name: Godot game - screenshots and web build (Linux)
@@ -228,6 +228,20 @@ jobs:
           echo "exit: $code"
           if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" sim-demo/run.log; then
             echo "::error::GDScript errors in the simulation demo"; exit 1
+          fi
+          test "$code" = "0"
+
+      - name: Simulate a month of crime headlessly (theft, discovery, evidence; native Godot)
+        run: |
+          set +e
+          timeout -k 10 300 "$GODOT" --headless --path godot -s res://tests/run_sim.gd -- \
+            --seed=21 --days=30 --profile=tension --crime --out="$PWD/sim-demo" > sim-demo/run-crime.log 2>&1
+          code=$?
+          set -e
+          cat sim-demo/run-crime.log
+          echo "exit: $code"
+          if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" sim-demo/run-crime.log; then
+            echo "::error::GDScript errors in the crime demo"; exit 1
           fi
           test "$code" = "0"
 

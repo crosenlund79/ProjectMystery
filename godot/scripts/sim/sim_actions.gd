@@ -4,10 +4,11 @@
 ## transfer tied to an event, and every till, tin and pantry keeps the amount its owners expect.
 ##
 ## With memory on, the people involved know what they did, witnesses see or hear it (scripts/sim/sim_perception.gd)
-## and chats carry gossip (scripts/sim/sim_gossip.gd).
+## and chats carry gossip (scripts/sim/sim_gossip.gd). With crime on, a resident may steal, a clerk may write a
+## sale in twice, a forced door is noticed by whoever opens up, and an accused culprit may confess
+## (scripts/sim/sim_crime.gd).
 ##
-## Not here yet (Pilot 3): stealing, fights and injuries, falls and collisions, the clinic and repairs, ledger
-## mistakes.
+## Not here yet (Pilot 3B): fights and injuries, falls and collisions, the clinic and repairs.
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
@@ -16,6 +17,8 @@ const Decisions = preload("res://scripts/sim/sim_decisions.gd")
 const Memory = preload("res://scripts/sim/sim_memory.gd")
 const Perception = preload("res://scripts/sim/sim_perception.gd")
 const Gossip = preload("res://scripts/sim/sim_gossip.gd")
+const Crime = preload("res://scripts/sim/sim_crime.gd")
+const Incidents = preload("res://scripts/sim/sim_incidents.gd")
 
 const DAY := 1440
 
@@ -46,6 +49,8 @@ static func perform(sim, r, plan: Dictionary, ta: int) -> void:
 		"odd_job":
 			if not sim.staff_at("mill", ta).is_empty():
 				sim.daily["odd:" + r.id] = int(sim.daily.get("odd:" + r.id, 0)) + 1
+		"steal":
+			Crime.steal(sim, r, plan, ta)
 		"loan", "repay", "confront", "reconcile", "help":
 			var x: String = plan["target"]
 			if x == "" or not sim.awake_at(x, ta, sim.loc(r.id)):
@@ -73,6 +78,11 @@ static func do_work(sim, r, ta: int) -> void:
 	var key := "opened:" + place
 	if int(sim.daily.get(key, 0)) == 0:
 		sim.daily[key] = 1
+		if sim.crime_on:
+			# whoever opens up sees a forced door first
+			for e in sim.world.evidence_at(place, ta):
+				if e["kind"] == "forced_door" and not (r.id in e["noticed_by"]) and not Crime.made_by(sim, r.id, e):
+					Crime.notice(sim, r.id, e, ta)
 		sim.world.locations[place]["locked"] = false
 		for cid in ["till:" + place, "stock:" + place]:
 			if sim.world.containers.has(cid):
@@ -171,11 +181,13 @@ static func shop(sim, r, ta: int) -> void:
 		till["expected_cash"] += cost
 		stock["expected_food"] -= units
 		pantry["expected_food"] += units
-		sim.world.record("ledger", ta, "%s sale to %s: %d units, %d cr" % [SimClock.fmt(ta), r.full_name(), units, cost],
-				ev["id"])
+		var line := "%s sale to %s: %d units, %d cr" % [SimClock.fmt(ta), r.full_name(), units, cost]
+		sim.world.record("ledger", ta, line, ev["id"])
 		if sim.memory_on:
 			sim.add_belief(r.id, Memory.claim("purchase", {"subject": r.id, "location": "grocery", "start": ta,
 					"amount": cost, "detail": "%d units" % units}), "self", 0.95, ta, {"event": ev["id"]})
+		if sim.crime_on and sim.rng.random() < 0.015 * (1 - sim.residents[clerk].traits["diligence"]):
+			Crime.ledger_error(sim, clerk, r, till, cost, line, ev, ta)
 	if units < want and units < size * 3:
 		ask_credit(sim, r, staff, want - units, ta)
 
@@ -502,6 +514,7 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 	var debt := {}
 	var topic := ""
 	var suspicion := {}
+	var incident_core = null  # what the accusation is really about, if anything happened there then
 	if reason == "debt" or reason == "rent":
 		debt = sim.world.debt(ref)
 		if debt.is_empty() or debt["settled"] >= 0:
@@ -516,6 +529,8 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 			var premise_event = sim.beliefs[pid]["event"]
 			if premise_event and causes.size() < 3:
 				causes.append(premise_event)
+		if sim.crime_on:
+			incident_core = Incidents.core_for_claim(sim, suspicion["claim"])
 	else:
 		topic = "an old grievance"
 		for old in sim.events.events.slice(0, 20):
@@ -526,6 +541,7 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 			"causes": causes, "audibility": 2, "notable": true, "time": ta,
 			"summary": "%s confronts %s about %s." % [r.first, target.first, topic]})
 	sim.bump("confrontations")
+	var guilty: bool = incident_core != null and incident_core in target.guilty_of
 	if sim.memory_on:
 		var seen := Memory.claim("argument", {"subject": r.id, "other": x, "location": here, "start": ta, "detail": topic})
 		var heard_detail := "raised voices" + (", something about money" if reason in ["debt", "rent"] else "")
@@ -534,18 +550,26 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 		for p_ in [r.id, x]:
 			sim.add_belief(p_, seen, "self", 1.0, ta, {"event": ev["id"]})
 		if not suspicion.is_empty():
-			# now the accused knows someone suspects them (told to their face); nobody is guilty of anything
-			# before Pilot 3, so they resent it
+			# now the accused knows someone suspects them (told to their face); if they didn't do it, they
+			# resent it
 			var s: Dictionary = suspicion["claim"]
 			sim.add_belief(x, Memory.claim("suspect", {"subject": x, "location": s["location"], "start": s["start"],
 					"end": s["end"], "detail": s["detail"]}), "told", 0.9, ta, {"event": ev["id"], "told_by": r.id,
 					"via": ref})
-			var theirs: Dictionary = target.r(r.id)
-			theirs["resentment"] = clampf(theirs["resentment"] + 0.2, 0.0, 1.0)
+			if not guilty:
+				var theirs: Dictionary = target.r(r.id)
+				theirs["resentment"] = clampf(theirs["resentment"] + 0.2, 0.0, 1.0)
 	if not debt.is_empty() and target.cash >= debt["amount"]:
 		settle_debt(sim, target, debt, ta + 1, here)
 		sim.bump("deescalation:paid")
 		return
+	if guilty:
+		# accused of what they really did: an honest, soft-hearted culprit may own up
+		var tt: Dictionary = target.traits
+		if sim.rng.random() < 0.05 + 0.5 * tt["honesty"] * tt["empathy"] - 0.25 * tt["caution"]:
+			Crime.confess(sim, target, r, incident_core, ev, here, ta + 1)
+			sim.bump("deescalation:confession")
+			return
 
 	var a = r
 	var b = target

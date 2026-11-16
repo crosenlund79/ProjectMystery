@@ -39,12 +39,15 @@ static func profile(name: String) -> Dictionary:
 
 
 static func normalize(cfg: Dictionary) -> Dictionary:
-	## {"seed": int, "days": 60, "profile": "normal", "residents": 10, "memory": true}, defaults filled in.
+	## {"seed": int, "days": 60, "profile": "normal", "residents": 10, "memory": true, "crime": false}, defaults
+	## filled in.
 	## memory: residents perceive, remember and gossip (Pilot 2). false runs Pilot 1's town exactly, as it was
 	## before memory existed (its pinned histories still hold).
+	## crime: ledger mistakes, theft, hidden loot, discovered losses, evidence and the incident registry (Pilot
+	## 3A). Off by default: with it off, the town lives exactly as it did before (Pilot 1 and 2 histories hold).
 	return {"seed": int(cfg.get("seed", 1)), "days": int(cfg.get("days", 60)),
 			"profile": String(cfg.get("profile", "normal")), "residents": int(cfg.get("residents", 10)),
-			"memory": bool(cfg.get("memory", true))}
+			"memory": bool(cfg.get("memory", true)), "crime": bool(cfg.get("crime", false))}
 
 
 static func problem(cfg: Dictionary) -> String:
@@ -55,4 +58,6 @@ static func problem(cfg: Dictionary) -> String:
 		return "residents must be between 8 and 12 for this prototype"
 	if cfg["days"] < 1:
 		return "days must be positive"
+	if cfg["crime"] and not cfg["memory"]:
+		return "crime needs memory: who discovers a loss, who suspects whom, what a thief conceals"
 	return ""

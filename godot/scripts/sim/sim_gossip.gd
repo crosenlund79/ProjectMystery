@@ -22,7 +22,9 @@ const OWN_TROUBLES := ["debt", "hardship", "suspect", "refusal", "rent_missed"]
 static func conceals(sim, speaker, b: Dictionary) -> bool:
 	var c: Dictionary = b["claim"]
 	if c["kind"] in ["theft_self", "stash", "collision_self"]:
-		return true  # (Python also hides a collision only until it is reported; there are none before Pilot 3)
+		return true  # (Python also hides a collision only until it is reported; there are none before Pilot 3B)
+	if not speaker.guilty_of.is_empty() and c["subject"] == speaker.id:
+		return true  # someone with something to hide keeps quiet about themselves
 	if (c["subject"] and c["subject"] != speaker.id and speaker.r(c["subject"])["affection"] >= 0.75
 			and c["kind"] in LOYAL_KINDS):
 		return true
@@ -130,7 +132,13 @@ static func infer_suspicions(sim, rid: String, tm: int) -> void:
 		var ws: int = c["start"] if c["kind"] == "loss" else c["start"] - 12 * 60
 		var we: int = c["end"] if c["end"] != null else c["start"]
 		var loc: String = c["location"]
-		# (Python skips incidents the resident caused themselves; nobody causes any before Pilot 3.)
+		var mine := false  # nobody goes looking for the culprit of what they did themselves
+		for g in r.guilty_of:
+			var ge: Dictionary = sim.events.by_id[g]
+			if ge["location"] == loc and ws - 60 <= ge["time"] and ge["time"] <= we + 60:
+				mine = true
+		if mine:
+			continue
 		var scores := {}
 		var premises := {}
 		var road := loc == "road"

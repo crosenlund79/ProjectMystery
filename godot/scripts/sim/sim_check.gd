@@ -4,12 +4,19 @@
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
+const Crime = preload("res://scripts/sim/sim_crime.gd")
+const Incidents = preload("res://scripts/sim/sim_incidents.gd")
 
 const DAY := 1440
 const MEMORY_KINDS := ["presence", "sighting", "intoxicated", "noise", "debt", "refusal", "hardship", "argument",
-		"grudge", "rent_missed", "loan", "help", "reconcile", "purchase", "laid_off", "suspect"]
+		"grudge", "rent_missed", "loan", "help", "reconcile", "purchase", "laid_off", "suspect", "loss", "damage",
+		"theft_self", "stash", "confession"]
 const ERRORS := ["misidentified", "time_distorted", "certainty_inflated"]
-const SPREAD := {"argument": ["argument"], "refusal": ["loan_refused", "credit_refused"], "rent_missed": ["rent_missed"]}
+const SPREAD := {"argument": ["argument"], "refusal": ["loan_refused", "credit_refused"], "rent_missed": ["rent_missed"],
+		"loss": ["loss_discovered"]}
+## Events only the crime layer makes (Pilot 3A).
+const CRIME_EVENTS := ["theft", "theft_aborted", "forced_entry", "hide_loot", "stash_withdraw", "ledger_error",
+		"loss_discovered", "cleaned_up", "confession"]
 const COMPARED_KINDS := ["move", "meal", "pub_meal", "drink", "purchase", "credit", "credit_refused", "wage",
 		"rent_paid", "rent_missed", "loan", "loan_refused", "repay", "help", "reconcile", "argument", "debt_overdue",
 		"deposit", "withdraw", "chat"]
@@ -27,6 +34,7 @@ static func problems(sim) -> Array:
 	_check_people(sim, out)
 	_check_debts(sim, out)
 	_check_memory(sim, out)
+	_check_crime(sim, out)
 	return out
 
 
@@ -76,10 +84,13 @@ static func _check_money(sim, out: Array) -> void:
 			out.append("%s is not conserved: %d + %d in - %d out != %d" % [asset, start, came_in[asset],
 					went_out[asset], end])
 	for cid in sim.world.containers:
+		# every till, tin and pantry holds what its owners expect, short only by what was stolen from it or
+		# written into its books twice since it was last counted
 		var c: Dictionary = sim.world.containers[cid]
-		if c["cash"] != c["expected_cash"] or c["food"] != c["expected_food"]:
-			out.append("%s holds %d cash and %d food; its owners expect %d and %d" % [c["label"], c["cash"], c["food"],
-					c["expected_cash"], c["expected_food"]])
+		var explained: Array = Crime.unexplained_shortfall(sim, c) if sim.crime_on else [0, 0]
+		if c["expected_cash"] - c["cash"] != explained[0] or c["expected_food"] - c["food"] != explained[1]:
+			out.append("%s holds %d cash and %d food; its owners expect %d and %d (unseen: %s)" % [c["label"], c["cash"],
+					c["food"], c["expected_cash"], c["expected_food"], explained])
 
 
 static func _check_events(sim, out: Array) -> void:
@@ -273,6 +284,181 @@ static func _check_memory(sim, out: Array) -> void:
 			out.append("%s: misidentified without seeing or hearing" % label)
 
 
+static func _check_crime(sim, out: Array) -> void:
+	## The crime layer keeps the same rules as everything else, and these besides:
+	##   a theft takes from a container nobody else was at, into the thief's own stash, and is in the registry
+	##   with the thief responsible; only the thief ever spends from or hides a stash, and stolen money leaves
+	##   it only to be spent by them or handed back in a confession
+	##   a discovered loss is exactly what was stolen and written in twice since the last count, by the events
+	##   that did it, inside its window; an incident is discovered by the one who counted, after it happened
+	##   a trace exists only because an event made it, there and then; it is cleared away by a later event;
+	##   whoever noticed it was there to see it, and nobody "notices" a trace of their own wrongdoing
+	##   nobody knows of a theft because it happened: only the thief holds anything that comes from the theft
+	##   itself; everyone else learns of a loss from a count (seen, or told by someone who knew), and whom they
+	##   suspect is inferred from a loss or damage they already knew of; a thief never goes looking for the
+	##   culprit of their own theft
+	if not sim.crime_on:
+		if not sim.incidents.is_empty() or not sim.world.evidence.is_empty():
+			out.append("crime is off but there are %d incidents and %d traces" % [sim.incidents.size(),
+					sim.world.evidence.size()])
+		for ev in sim.events.events:
+			if ev["kind"] in CRIME_EVENTS or ev.has("discreet"):
+				out.append("crime is off but %s is a %s" % [ev["id"], ev["kind"]])
+				break
+		return
+	var by_event := {}  # event id -> transfers made for it
+	for tr in sim.world.transfers:
+		if not by_event.has(tr["event"]):
+			by_event[tr["event"]] = []
+		by_event[tr["event"]].append(tr)
+		for side in ["src", "dst"]:
+			var acct: String = tr[side]
+			if not acct.begins_with("box:stash:"):
+				continue
+			var owner := acct.substr(10)
+			var why: Dictionary = sim.events.by_id.get(tr["event"], {})
+			var allowed := ["theft"] if side == "dst" else ["stash_withdraw", "hide_loot", "confession"]
+			if why.is_empty() or not (why["kind"] in allowed) or not (owner in why["actors"]):
+				out.append("%s's stash: %s %s for %s" % [owner, "filled" if side == "dst" else "emptied",
+						tr["amount"], why.get("kind", tr["event"])])
+	for ev in sim.events.events:
+		var id: String = ev["id"]
+		match ev["kind"]:
+			"theft":
+				var thief: String = ev["actors"][0]
+				var cid: String = ev["objects"][0]
+				for x in sim.ids:
+					if x != thief and sim.where(x, ev["time"] - 2) == ev["location"]:
+						out.append("%s: %s stole with %s there" % [id, thief, x])
+				var moved: Array = by_event.get(id, [])
+				if (moved.size() != 1 or moved[0]["src"] != "box:" + cid or moved[0]["dst"] != "box:stash:" + thief
+						or moved[0]["amount"] != ev["data"]["amount"] or moved[0]["asset"] != ev["data"]["asset"]):
+					out.append("%s: the loot did not go from %s into %s's stash" % [id, cid, thief])
+				var inc: Dictionary = Incidents.incident_for(sim, id)
+				if (inc.is_empty() or inc["core_event"] != id or inc["family"] != "theft" or inc["responsible"] != thief
+						or inc["time"] != ev["time"] or inc["location"] != ev["location"]):
+					out.append("%s: not registered as %s's theft" % [id, thief])
+				if not (id in sim.residents[thief].guilty_of):
+					out.append("%s: %s does not know they did it" % [id, thief])
+			"ledger_error":
+				var inc: Dictionary = Incidents.incident_for(sim, id)
+				if inc.is_empty() or inc["family"] != "accounting_error" or inc["responsible"] != null:
+					out.append("%s: a ledger mistake outside any accounting incident" % id)
+				var sale: Dictionary = sim.events.by_id.get(ev["causes"][0], {}) if not ev["causes"].is_empty() else {}
+				if sale.is_empty() or sale["kind"] != "purchase" or sale["data"]["paid"] != ev["data"]["amount"]:
+					out.append("%s: writes in twice a sale that did not happen" % id)
+			"loss_discovered":
+				var cid: String = ev["objects"][0]
+				var window: Array = ev["data"]["window"]
+				var cash := 0
+				var food := 0
+				for cause in ev["causes"]:
+					var ce: Dictionary = sim.events.by_id[cause]
+					if not (ce["kind"] in ["theft", "ledger_error"]) or ce["objects"][0] != cid:
+						out.append("%s: explained by %s, which did not touch %s" % [id, cause, cid])
+					elif ce["time"] < window[0] or ce["time"] > ev["time"]:
+						out.append("%s: explained by %s, outside its window" % [id, cause])
+					elif ce["kind"] == "ledger_error" or ce["data"]["asset"] == "cash":
+						cash += int(ce["data"]["amount"])
+					else:
+						food += int(ce["data"]["amount"])
+				if cash != ev["data"]["cash"] or food != ev["data"]["food"]:
+					out.append("%s: finds %d cash and %d food missing, but %d and %d went" % [id, ev["data"]["cash"],
+							ev["data"]["food"], cash, food])
+			"hide_loot":
+				var thief: String = ev["actors"][0]
+				var theft: Dictionary = sim.events.by_id.get(ev["causes"][0], {}) if not ev["causes"].is_empty() else {}
+				if theft.is_empty() or theft["kind"] != "theft" or theft["actors"][0] != thief:
+					out.append("%s: %s hides loot they did not take" % [id, thief])
+				if ev["location"] != sim.residents[thief].home:
+					out.append("%s: loot hidden away from home" % id)
+			"confession":
+				var culprit: String = ev["actors"][0]
+				var core: String = ev["causes"][-1]
+				var inc: Dictionary = Incidents.incident_for(sim, core)
+				if not (core in sim.residents[culprit].guilty_of) or inc.is_empty() or not inc["reported_openly"]:
+					out.append("%s: %s confesses to what they did not do" % [id, culprit])
+	for e in sim.world.evidence:
+		var src: Dictionary = sim.events.by_id.get(e["created_by"], {})
+		if src.is_empty() or src["time"] != e["created_at"] or src["location"] != e["place"]:
+			out.append("%s (%s) was not made by an event there and then" % [e["id"], e["kind"]])
+			continue
+		if e["removed_at"] >= 0:
+			var gone: Dictionary = sim.events.by_id.get(e["removed_by"], {})
+			if (gone.is_empty() or gone["kind"] != "cleaned_up" or gone["data"]["evidence"] != e["id"]
+					or gone["time"] != e["removed_at"] or gone["location"] != e["place"] or gone["time"] < e["created_at"]):
+				out.append("%s was removed without being cleared away" % e["id"])
+		for rid in e["noticed_by"]:
+			if sim.perceived.get(rid + "|" + e["created_by"], "") != "trace":
+				out.append("%s: %s noticed it without seeing it" % [e["id"], rid])
+			if Crime.made_by(sim, rid, e):
+				out.append("%s: %s \"noticed\" their own trace" % [e["id"], rid])
+	for inc in sim.incidents:
+		var core: Dictionary = sim.events.by_id.get(inc["core_event"], {})
+		if core.is_empty() or core["time"] != inc["time"] or core["location"] != inc["location"]:
+			out.append("%s: its core event is not what happened there and then" % inc["id"])
+		for rel in inc["related_events"]:
+			if not sim.events.by_id.has(rel):
+				out.append("%s: linked to unknown event %s" % [inc["id"], rel])
+		if inc["discovered_at"] != null:
+			var found: Dictionary = sim.events.by_id.get(inc["discovery_event"], {})
+			if (found.is_empty() or found["time"] != inc["discovered_at"] or found["actors"][0] != inc["discovered_by"]
+					or inc["discovered_at"] < inc["time"]):
+				out.append("%s: discovered by %s, but not by what they did" % [inc["id"], inc["discovered_by"]])
+			# what was discovered happened inside the window: the theft itself; for a run of ledger mistakes
+			# (one too small to notice is written off at a count, the next joins the same incident), one of them
+			var w = inc["window"]
+			var inside := false
+			for eid in [inc["core_event"]] + inc["related_events"]:
+				var ie: Dictionary = sim.events.by_id.get(eid, {})
+				if (not ie.is_empty() and ie["kind"] in ["theft", "ledger_error"] and w != null and w[0] <= ie["time"]
+						and ie["time"] <= w[1]):
+					inside = true
+			if not inside:
+				out.append("%s: happened outside the window it was discovered in" % inc["id"])
+	for rid in sim.ids:
+		for g in sim.residents[rid].guilty_of:
+			var ge: Dictionary = sim.events.by_id.get(g, {})
+			if ge.is_empty() or not (rid in ge["actors"]):
+				out.append("%s is guilty of %s, which they did not do" % [rid, g])
+	for bid in sim.beliefs:
+		var b: Dictionary = sim.beliefs[bid]
+		var c: Dictionary = b["claim"]
+		var label := "%s (%s %s a %s)" % [bid, b["holder"], b["source"], c["kind"]]
+		var root: Dictionary = _root(sim, b)
+		var origin: Dictionary = sim.events.by_id.get(root["event"], {}) if root["event"] else {}
+		if not origin.is_empty() and origin["kind"] in ["theft", "hide_loot", "stash_withdraw"] and not (b["holder"] in origin["actors"]):
+			out.append("%s: knows of %s, which only %s knows of" % [label, origin["id"], origin["actors"][0]])
+		match c["kind"]:
+			"theft_self", "stash":
+				if b["source"] != "self" or origin.is_empty() or not (b["holder"] in origin["actors"]):
+					out.append("%s: a thief's secret held by someone else" % label)
+			"loss":
+				if origin.is_empty() or origin["kind"] != "loss_discovered":
+					out.append("%s: knows of a loss nobody discovered" % label)
+			"damage":
+				if b["source"] == "saw":
+					var trace := {}
+					for e in sim.world.evidence:
+						if e["created_by"] == b["event"] and e["place"] == c["location"]:
+							trace = e
+					# there to see when they saw it (whoever clears a trace away sees it as they do)
+					if (trace.is_empty() or not (b["holder"] in trace["noticed_by"]) or b["acquired"] < trace["created_at"]
+							or (trace["removed_at"] >= 0 and b["acquired"] > trace["removed_at"])):
+						out.append("%s: saw damage that was not there to see" % label)
+			"suspect":
+				if b["source"] == "inferred":
+					var first = sim.beliefs.get(b["premises"][0]) if not b["premises"].is_empty() else null
+					if first == null or not (first["claim"]["kind"] in ["loss", "damage", "struck", "death"]):
+						out.append("%s: a suspicion without a loss or damage behind it" % label)
+					for g in sim.residents[b["holder"]].guilty_of:
+						var ge: Dictionary = sim.events.by_id[g]
+						var until: int = c["end"] if c["end"] != null else c["start"]
+						if (ge["location"] == c["location"] and c["start"] - 60 <= ge["time"] and ge["time"] <= until + 60
+								and ge["time"] <= b["acquired"]):
+							out.append("%s: looks for the culprit of their own %s" % [label, g])
+
+
 static func _root(sim, b: Dictionary) -> Dictionary:
 	## The belief a piece of hearsay started from (follows ``via``).
 	var seen := 0
@@ -332,6 +518,64 @@ static func memory_stats(sim) -> Dictionary:
 	return out
 
 
+const CRIME_COUNTED := ["theft", "theft_aborted", "forced_entry", "ledger_error", "loss_discovered", "stash_withdraw",
+		"confession", "cleaned_up"]
+
+
+static func incident_at(sim, claim: Dictionary) -> Dictionary:
+	## The incident (discovered or not) at a claim's place within six hours of its time, or {}: what a
+	## suspicion is really about.
+	if claim["start"] == null:
+		return {}
+	var until: int = claim["end"] if claim["end"] != null else claim["start"]
+	for inc in sim.incidents:
+		if inc["location"] == claim["location"] and claim["start"] - 6 * 60 <= inc["time"] and inc["time"] <= until + 6 * 60:
+			return inc
+	return {}
+
+
+static func crime_stats(sim) -> Dictionary:
+	## Crime-layer events per resident per day; the share of thefts discovered; the share of suspicions that fall
+	## on whoever was really responsible (a ledger mistake has nobody); cash taken per theft of cash. Undefined
+	## values are -1. tools/sim_reference.py measures Python the same way.
+	var days: float = maxf(1.0, sim.t / float(DAY))
+	var per := float(sim.ids.size()) * days
+	var counts: Dictionary = sim.events.counts()
+	var out := {}
+	for k in CRIME_COUNTED:
+		out[k] = counts.get(k, 0) / per
+	var accusations := 0
+	var taken := 0
+	var cash_thefts := 0
+	for ev in sim.events.events:
+		if ev["kind"] == "argument" and ev["data"].get("reason", "") == "suspicion":
+			accusations += 1
+		elif ev["kind"] == "theft" and ev["data"]["asset"] == "cash":
+			taken += int(ev["data"]["amount"])
+			cash_thefts += 1
+	out["accusations"] = accusations / per
+	out["cash_per_theft"] = float(taken) / cash_thefts if cash_thefts > 0 else -1.0
+	var thefts := 0
+	var found := 0
+	for inc in sim.incidents:
+		if inc["family"] == "theft":
+			thefts += 1
+			if inc["discovered_at"] != null:
+				found += 1
+	out["theft_discovered_share"] = float(found) / thefts if thefts > 0 else -1.0
+	var suspicions := 0
+	var right := 0
+	for bid in sim.beliefs:
+		var b: Dictionary = sim.beliefs[bid]
+		if b["source"] == "inferred" and b["claim"]["kind"] == "suspect":
+			suspicions += 1
+			var inc := incident_at(sim, b["claim"])
+			if not inc.is_empty() and inc["responsible"] == b["claim"]["subject"]:
+				right += 1
+	out["suspicions_right_share"] = float(right) / suspicions if suspicions > 0 else -1.0
+	return out
+
+
 static func place_counts(sim) -> Dictionary:
 	return sim.samples["at"]
 
@@ -371,6 +615,8 @@ static func stats(sim) -> Dictionary:
 			"money": {"mean_wallet": wallets / people, "town_cash": float(town), "open_debts": float(open)}}
 	if sim.memory_on:
 		result["memory"] = memory_stats(sim)
+	if sim.crime_on:
+		result["crime"] = crime_stats(sim)
 	return result
 
 

@@ -1,5 +1,6 @@
 ## The native town simulation (scripts/sim/): reproducible from its seed, every rule of the world holds, and
-## its behaviour matches the Python reference (tests/sim_reference.json, written by tools/sim_reference.py).
+## its behaviour matches the Python reference (tests/sim_reference.json, and with the crime switch on
+## tests/sim_reference_theft.json, both written by tools/sim_reference.py).
 extends RefCounted
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -7,9 +8,12 @@ const SimCheck = preload("res://scripts/sim/sim_check.gd")
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
 
 const REFERENCE := "res://tests/sim_reference.json"
+const THEFT_REFERENCE := "res://tests/sim_reference_theft.json"
 const GOLDEN := "res://tests/sim_golden.json"
 const PROFILES := ["normal", "scarcity", "crisis", "tension"]
 const SEEDS := [1, 2, 3]
+## Thefts are rare (a few a month), so the crime-on comparison uses more runs.
+const CRIME_SEEDS := [1, 2, 3, 4, 5]
 const DAYS := 30
 ## Everyday routine and how much people see and pass on must match Python closely; the other statistics are
 ## reported and listed as differences.
@@ -17,7 +21,9 @@ const CORE := ["asleep", "share.home", "share.work", "per_resident_day.meal", "p
 		"per_resident_day.wage", "per_resident_day.purchase", "needs.energy", "needs.hunger", "memory.belief_saw",
 		"memory.belief_told", "memory.gossip_chats", "memory.gossip_transfers"]
 ## The runs whose event-log digests are pinned in tests/sim_golden.json (also checked on Linux by run_sim.gd).
-## With memory off they are Pilot 1's histories, unchanged since Pilot 1; with memory on, Pilot 2's.
+## With memory off they are Pilot 1's histories, unchanged since Pilot 1; with memory on, Pilot 2's (unchanged
+## by Pilot 3A, whose crime switch is off by default); with crime on, Pilot 3A's, a month long so that thefts
+## happen in them.
 const GOLDEN_RUNS := [
 	{"seed": 7, "days": 14, "profile": "normal", "memory": false},
 	{"seed": 21, "days": 14, "profile": "tension", "memory": false},
@@ -25,12 +31,16 @@ const GOLDEN_RUNS := [
 	{"seed": 7, "days": 14, "profile": "normal", "memory": true},
 	{"seed": 21, "days": 14, "profile": "tension", "memory": true},
 	{"seed": 5, "days": 14, "profile": "crisis", "residents": 12, "memory": true},
+	{"seed": 21, "days": 30, "profile": "tension", "crime": true},
+	{"seed": 7, "days": 30, "profile": "scarcity", "crime": true},
+	{"seed": 5, "days": 30, "profile": "crisis", "residents": 12, "crime": true},
 ]
 const SCRIPTS := ["res://scripts/sim/sim_rng.gd", "res://scripts/sim/sim_clock.gd", "res://scripts/sim/sim_config.gd",
 		"res://scripts/sim/sim_world.gd", "res://scripts/sim/sim_resident.gd", "res://scripts/sim/sim_town.gd",
 		"res://scripts/sim/sim_events.gd", "res://scripts/sim/sim_decisions.gd", "res://scripts/sim/sim_actions.gd",
 		"res://scripts/sim/simulation.gd", "res://scripts/sim/sim_check.gd", "res://scripts/sim/sim_memory.gd",
-		"res://scripts/sim/sim_perception.gd", "res://scripts/sim/sim_gossip.gd"]
+		"res://scripts/sim/sim_perception.gd", "res://scripts/sim/sim_gossip.gd", "res://scripts/sim/sim_incidents.gd",
+		"res://scripts/sim/sim_crime.gd"]
 
 
 func run(t, _tree) -> void:
@@ -45,10 +55,15 @@ func run(t, _tree) -> void:
 	if not broken.is_empty():
 		return  # running a half-compiled simulation would only bury the error under thousands of others
 	_reproducible(t)
-	var runs := _runs()
+	var runs := _runs(SEEDS, false)
 	_integrity(t, runs)
 	_daily_life(t, runs)
-	_matches_python(t, runs)
+	_matches_python(t, runs, REFERENCE, "sim-vs-python")
+	var crime_runs := _runs(CRIME_SEEDS, true)
+	_integrity(t, crime_runs)
+	_daily_life(t, crime_runs)
+	_matches_python(t, crime_runs, THEFT_REFERENCE, "crime-vs-python")
+	_theft_rate(t, crime_runs)
 	_golden(t)
 
 
@@ -75,24 +90,38 @@ func _reproducible(t) -> void:
 	t.end()
 
 
-func _runs() -> Array:
+func _runs(seeds: Array, crime: bool) -> Array:
 	var runs := []
 	for profile in PROFILES:
-		for seed in SEEDS:
+		for seed in seeds:
 			var started := Time.get_ticks_msec()
-			var sim = Simulation.new({"seed": seed, "days": DAYS, "profile": profile}).run()
-			print("  simulated %s seed %d: %d days, %d events, %d ms" % [profile, seed, DAYS,
-					sim.events.events.size(), Time.get_ticks_msec() - started])
-			runs.append({"profile": profile, "seed": seed, "sim": sim})
+			var sim = Simulation.new({"seed": seed, "days": DAYS, "profile": profile, "crime": crime}).run()
+			var counts: Dictionary = sim.events.counts()
+			print("  simulated %s seed %d%s: %d days, %d events, %d ms%s" % [profile, seed, ", crime on" if crime else "",
+					DAYS, sim.events.events.size(), Time.get_ticks_msec() - started,
+					"; %d thefts, %d losses found, %d ledger mistakes, %d accusations, %d confessions" % [
+					counts.get("theft", 0), counts.get("loss_discovered", 0), counts.get("ledger_error", 0),
+					_accusations(sim), counts.get("confession", 0)] if crime else ""])
+			runs.append({"profile": profile, "seed": seed, "sim": sim, "crime": crime})
 	return runs
 
 
+static func _accusations(sim) -> int:
+	var n := 0
+	for ev in sim.events.events:
+		if ev["kind"] == "argument" and ev["data"].get("reason", "") == "suspicion":
+			n += 1
+	return n
+
+
 func _integrity(t, runs: Array) -> void:
-	t.begin("money adds up, places are real, needs stay in range, the log is in time order (%d runs)" % runs.size())
+	var crime: bool = not runs.is_empty() and runs[0]["crime"]
+	t.begin("money adds up, places are real, needs stay in range, the log is in time order (%d runs%s)" % [runs.size(),
+			", crime on: every loss explained, every trace and incident with its events" if crime else ""])
 	for rn in runs:
 		var found: Array = SimCheck.problems(rn["sim"])
-		t.check(found.is_empty(), "%s seed %d: %d problems, first: %s" % [rn["profile"], rn["seed"], found.size(),
-				found.slice(0, 3)])
+		t.check(found.is_empty(), "%s seed %d%s: %d problems, first: %s" % [rn["profile"], rn["seed"],
+				", crime on" if crime else "", found.size(), found.slice(0, 3)])
 	t.end()
 
 
@@ -144,16 +173,23 @@ static func _tolerance(key: String, mean: float, sd: float) -> float:
 		least = 0.1
 	elif key.begins_with("memory."):
 		least = 0.05
+	elif key.ends_with("_share"):
+		least = 0.3
+	elif key == "crime.cash_per_theft":
+		least = 100.0
+	elif key.begins_with("crime."):
+		least = 0.01
 	elif key.begins_with("money."):
 		least = 25.0
 	return maxf(maxf(0.25 * absf(mean), 2.5 * sd), least)
 
 
-func _matches_python(t, runs: Array) -> void:
-	t.begin("behaviour matches the Python simulation (crime layer off on both sides)")
-	var text := FileAccess.get_file_as_string(REFERENCE)
+func _matches_python(t, runs: Array, reference: String, label: String) -> void:
+	t.begin("behaviour matches the Python simulation (%s)" % ("stealing on, violence and accidents off on both sides"
+			if reference == THEFT_REFERENCE else "crime layer off on both sides"))
+	var text := FileAccess.get_file_as_string(reference)
 	var ref = JSON.parse_string(text)
-	t.check(ref is Dictionary and ref.has("profiles"), "no reference statistics in " + REFERENCE)
+	t.check(ref is Dictionary and ref.has("profiles"), "no reference statistics in " + reference)
 	if not (ref is Dictionary and ref.has("profiles")):
 		t.end()
 		return
@@ -176,19 +212,40 @@ func _matches_python(t, runs: Array) -> void:
 		for k in keys:
 			var theirs: float = py["mean"][k]
 			if theirs < 0 or not counts.has(k):
-				print("  sim-vs-python %-9s %-34s (no runs where it is defined)" % [profile, k])
+				print("  %s %-9s %-34s (no runs where it is defined)" % [label, profile, k])
 				continue
 			var mine: float = float(sums[k]) / counts[k]
 			var tol := _tolerance(k, theirs, py["sd"][k])
 			var close := absf(mine - theirs) <= tol
 			var core: bool = k in CORE
-			print("  sim-vs-python %-9s %-34s godot %9.3f  python %9.3f  (allowed +/- %.3f)  %s" % [profile, k, mine,
+			print("  %s %-9s %-34s godot %9.4f  python %9.4f  (allowed +/- %.4f)  %s" % [label, profile, k, mine,
 					theirs, tol, "ok" if close else ("DIFFERS (core)" if core else "differs")])
 			if core:
 				t.check(close, "%s %s: godot %.3f, python %.3f" % [profile, k, mine, theirs])
 			elif not close:
 				differences += 1
-	print("  sim-vs-python: %d non-core statistics outside tolerance" % differences)
+	print("  %s: %d non-core statistics outside tolerance" % [label, differences])
+	t.end()
+
+
+func _theft_rate(t, runs: Array) -> void:
+	## Thefts are too rare for a season-by-season test (a few a month), so across all seasons together: Godot's
+	## thieves must steal about as often as Python's, within a factor of two either way.
+	t.begin("thieves steal about as often as in Python (all seasons together)")
+	var ref = JSON.parse_string(FileAccess.get_file_as_string(THEFT_REFERENCE))
+	var theirs := 0.0
+	for profile in PROFILES:
+		theirs += float(ref["profiles"][profile]["mean"]["crime.theft"]) / PROFILES.size()
+	var thefts := 0
+	var resident_days := 0.0
+	for rn in runs:
+		thefts += int(rn["sim"].events.counts().get("theft", 0))
+		resident_days += rn["sim"].ids.size() * DAYS
+	var mine := thefts / resident_days
+	print("  crime-vs-python thefts per resident-day, all seasons: godot %.4f (%d thefts)  python %.4f" % [mine, thefts,
+			theirs])
+	t.check(mine >= theirs * 0.5 and mine <= theirs * 2.0, "godot %.4f thefts per resident-day, python %.4f" % [mine,
+			theirs])
 	t.end()
 
 
@@ -198,6 +255,11 @@ func _golden(t) -> void:
 	for cfg in GOLDEN_RUNS:
 		var sim = Simulation.new(cfg).run()
 		digests[golden_key(cfg)] = sim.events.digest()
+		if cfg.get("crime", false):
+			var counts: Dictionary = sim.events.counts()
+			print("  GOLDEN %s holds %d thefts, %d losses found, %d ledger mistakes, %d traces" % [golden_key(cfg),
+					counts.get("theft", 0), counts.get("loss_discovered", 0), counts.get("ledger_error", 0),
+					sim.world.evidence.size()])
 	print("  GOLDEN %s" % JSON.stringify(digests, "", true))
 	if FileAccess.file_exists(GOLDEN):
 		var pinned = JSON.parse_string(FileAccess.get_file_as_string(GOLDEN))
@@ -210,5 +272,6 @@ func _golden(t) -> void:
 
 
 static func golden_key(cfg: Dictionary) -> String:
-	return "seed %d, %s, %d days, %d residents, memory %s" % [int(cfg["seed"]), cfg["profile"], int(cfg["days"]),
-			int(cfg.get("residents", 10)), "on" if cfg.get("memory", true) else "off"]
+	return "seed %d, %s, %d days, %d residents, memory %s%s" % [int(cfg["seed"]), cfg["profile"], int(cfg["days"]),
+			int(cfg.get("residents", 10)), "on" if cfg.get("memory", true) else "off",
+			", crime on" if cfg.get("crime", false) else ""]
