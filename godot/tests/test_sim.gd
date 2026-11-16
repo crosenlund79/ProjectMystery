@@ -125,6 +125,8 @@ func _runs(seeds: Array, layer: String) -> Array:
 					{"off": "", "theft": ", crime on, violence off", "crime": ", crime on"}[layer], DAYS,
 					sim.events.events.size(), Time.get_ticks_msec() - started, detail])
 			if layer != "off" and sim.samples["hunger"] / maxf(1.0, float(sim.samples["hours"])) > 35:
+				print("  stalled shop %s seed %d (%s): %s" % [profile, seed, layer, _stalled_shop({"seed": seed,
+						"days": DAYS, "profile": profile, "crime": true, "violence": layer == "crime"}, sim)])
 				var plain = Simulation.new({"seed": seed, "days": DAYS, "profile": profile}).run()
 				print("  hungry month %s seed %d (%s): %s; the same town without crime: hunger %.0f, %d purchases" % [
 						profile, seed, layer, _hungry_month(sim),
@@ -149,6 +151,50 @@ static func _economy(sim) -> String:
 
 
 @warning_ignore("integer_division")
+static func _stalled_shop(cfg: Dictionary, sim) -> String:
+	## The morning the grocery stopped selling for good, hour by hour: the grocery's staff and the grocer's
+	## household, what each planned and where they were, their household's pantry, hunger, cash and injury.
+	var bought := {}
+	for ev in sim.events.events:
+		if ev["kind"] == "purchase":
+			var d: int = SimClock.day_of(ev["time"])
+			bought[d] = int(bought.get(d, 0)) + 1
+	var days: int = cfg["days"]
+	var first := -1
+	for d in range(1, days - 3):
+		var none := true
+		for x in range(d, days + 1):
+			if int(bought.get(x, 0)) > 0:
+				none = false
+		if none:
+			first = d
+			break
+	if first < 0:
+		return "the shop never stopped selling"
+	while SimClock.is_rest_day((first - 1) * SimClock.DAY):
+		first += 1
+	var grocer: String = sim.world.containers["till:grocery"]["owners"][0]
+	var people: Array = Array(sim.world.locations["grocery"]["staff"]).duplicate()
+	for m in sim.households[sim.residents[grocer].household]:
+		if not (m in people):
+			people.append(m)
+	var x = Simulation.new(cfg)
+	var start: int = (first - 1) * SimClock.DAY
+	x.run(start + 7 * 60)
+	var out := PackedStringArray(["from Day %d" % first])
+	for h in range(7, 18):
+		x.run(start + (h + 1) * 60)
+		var parts := PackedStringArray(["%d:00 staff %s" % [h, JSON.stringify(x.staff_at("grocery", start + h * 60 + 30))]])
+		for rid in people:
+			var r = x.residents[rid]
+			var pl = x.plans.get(rid)
+			parts.append("%s (%s, %s, diligence %.2f) %s@%s pantry %d hunger %.0f cash %d injury %d" % [rid, r.role,
+					r.household, r.traits["diligence"], pl["kind"] if pl != null else "-",
+					x.where(rid, start + h * 60 + 59), x.pantry(r)["food"], r.hunger, r.cash, r.injury])
+		out.append(" | ".join(parts))
+	return "; ".join(out)
+
+
 static func _hungry_month(sim) -> String:
 	## Day by day: purchases (p), hours the grocer spent in the shop when it was open (g), the town's mean wallet at
 	## the end of the day (w) and how many could not afford a unit of food (b); then what the grocer did instead.
