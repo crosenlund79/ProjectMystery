@@ -157,7 +157,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          grep -E "simulated |sim-vs-python|theft-vs-python|crime-vs-python|whole months|GOLDEN|^== test_(sim|memory|crime|violence|grocery|extraction)|extracted |provenance checked|candidates: |testimony: |traces: |undiscovered incidents|EXAMPLE|cases-vs-python|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
+          grep -E "simulated |sim-vs-python|theft-vs-python|crime-vs-python|whole months|GOLDEN|^== test_(sim|memory|crime|violence|grocery|extraction)|extracted |provenance checked|candidates: |testimony: |traces: |undiscovered incidents|EXAMPLE|cases-vs-python|^== test_generation|GENERATED|generated |YIELD|PLAYABLE|QUALITY|CASE GOLDEN|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
 
   screens:
     name: Godot game - screenshots and web build (Linux)
@@ -250,6 +250,28 @@ jobs:
             echo "::error::GDScript errors in the crime demo"; exit 1
           fi
           test "$code" = "0"
+
+      - name: Generate playable cases headlessly, judged without the truth, with pinned package bytes (native Godot)
+        run: |
+          set +e
+          code=0
+          for seed in 1 2; do
+            timeout -k 10 600 "$GODOT" --headless --path godot -s res://tests/run_sim.gd -- \
+              --seed=$seed --days=30 --profile=tension --generate --golden --out="$PWD/sim-demo/generated" \
+              > sim-demo/run-generate-$seed.log 2>&1
+            c=$?
+            cat sim-demo/run-generate-$seed.log
+            echo "exit: $c"
+            if [ "$c" != "0" ]; then code=$c; fi
+          done
+          set -e
+          if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" sim-demo/run-generate-*.log; then
+            echo "::error::GDScript errors in the case generation demo"; exit 1
+          fi
+          test "$code" = "0"
+
+      - name: Python reads the Godot-made case files (a reference check; the game needs no Python)
+        run: python3 tools/check_godot_cases.py sim-demo/generated/all
 
       - name: Upload the simulation demo
         if: always()

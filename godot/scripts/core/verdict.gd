@@ -137,8 +137,9 @@ static func score(truth: Dictionary, theory, hint_spend: int) -> Dictionary:
 
 
 static func _cites(truth: Dictionary, theory) -> Array:
+	## [points, notes, good, bad]: the case generator (scripts/cases/case_generate.gd) reads the last two.
 	if theory == null or theory.get("cite_refs", []).is_empty():
-		return [0, []]
+		return [0, [], 0, 0]
 	var good := 0
 	var bad := 0
 	var chain_ids := {}
@@ -165,7 +166,7 @@ static func _cites(truth: Dictionary, theory) -> Array:
 	var notes := []
 	if bad > 0:
 		notes.append("%d of the statements you relied on were mistaken or lies." % bad)
-	return [mini(20, 5 * good) - 3 * bad, notes]
+	return [mini(20, 5 * good) - 3 * bad, notes, good, bad]
 
 
 static func _event_less(a: Dictionary, b: Dictionary) -> bool:

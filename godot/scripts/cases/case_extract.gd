@@ -254,7 +254,8 @@ static func _belief_problems(sim, case_: Dictionary, key: String, rid: String, i
 		out.append("%s: a belief formed after the case start" % key)
 	if it["source"] != b["source"] or a["event"] != b["event"]:
 		out.append("%s: not told as the belief came (%s, %s)" % [key, it["source"], b["source"]])
-	var rec: Dictionary = Memory.recollect(b, now, SimRng.new([sim.config["seed"], "recall", case_["case_id"], b["id"]]))
+	var rec: Dictionary = Memory.recollect(b, now, SimRng.new([sim.config["seed"], "recall",
+			CaseBuilder.recall_key(sim, case_["truth"]["incident"]), b["id"]]))
 	var expected := CaseText.render(sim, rid, b, rec["claim"])
 	if expected != it["text"]:
 		out.append("%s: says \"%s\", but the belief, as recalled, reads \"%s\"" % [key, it["text"], expected])

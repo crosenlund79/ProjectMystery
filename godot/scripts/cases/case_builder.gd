@@ -12,7 +12,9 @@
 ## and is withheld, guarded or told openly as Python decides (self-protection, loyalty, uncertainty). The only
 ## statements not drawn from a belief are lies, each audited with what it hides: the responsible person's false
 ## account of where they were, a guilty driver's deer, a fighter who says the other started it.
-## Not here yet (Pilot 4B): the suitability verdict, hints and the playable package.
+## With them (Pilot 4B): the developer's suitability report (case_suitability.gd), sealed with the truth, and the
+## ladder of hints in the view. Whether the case is playable at all is decided afterwards, from the player's view
+## alone, by the truth-blind investigator (case_solver.gd, case_generate.gd).
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
@@ -24,6 +26,7 @@ const Incidents = preload("res://scripts/sim/sim_incidents.gd")
 const Crime = preload("res://scripts/sim/sim_crime.gd")
 const CaseText = preload("res://scripts/cases/case_text.gd")
 const Relevance = preload("res://scripts/cases/case_relevance.gd")
+const Suitability = preload("res://scripts/cases/case_suitability.gd")
 
 const DAY := 1440
 const CASE_SCHEMA := "0.3"
@@ -43,6 +46,9 @@ const HOOK_MECHANISMS := {
 	"person_dead": ["assaulted", "struck_by_vehicle", "accidental_fall", "unresolved"],
 	"property_damaged": ["vehicle_collision", "vandalism", "unresolved"],
 }
+## Godot-made cases carry their own namespace, so that one can never be mistaken for, or share a save slot with, a
+## case the Python laboratory made from the same seed (a different simulation, so a different case).
+const CASE_ID_PREFIX := "godot-"
 ## Families whose incidents have someone genuinely responsible for a wrong: the only ones a playable mystery may be
 ## made from. A fall is nobody's doing; a ledger mistake is no crime; a suspicion is not an incident.
 const CRIME_FAMILIES := ["theft", "assault", "collision"]
@@ -59,6 +65,7 @@ var sim
 var inc: Dictionary
 var now := 0
 var case_id := ""
+var recall_id := ""
 var window := []
 var focus := []
 var recent_from := 0
@@ -77,6 +84,7 @@ func _init(sim_, inc_: Dictionary) -> void:
 	inc = inc_
 	now = inc["case_start"]
 	case_id = case_id_for(sim, inc)
+	recall_id = recall_key(sim, inc)
 	var w0: int = inc["window"][0]
 	var w1: int = inc["window"][1]
 	window = [w0, w1]
@@ -93,6 +101,12 @@ func _init(sim_, inc_: Dictionary) -> void:
 
 
 static func case_id_for(sim_, inc_: Dictionary) -> String:
+	return CASE_ID_PREFIX + recall_key(sim_, inc_)
+
+
+static func recall_key(sim_, inc_: Dictionary) -> String:
+	## The case's place in the simulation (seed, profile, days, residents, incident), as Python names its cases. It
+	## keys how each resident recalls things at the case start, exactly as Python's recall stream does.
 	return "%d-%s-%dd-r%d-%s" % [int(sim_.config["seed"]), sim_.config["profile"], int(sim_.config["days"]),
 			int(sim_.config["residents"]), inc_["id"]]
 
@@ -266,13 +280,17 @@ func build() -> Dictionary:
 	var evidence := _evidence()
 	var records := _records()
 	var vehicles := _vehicles(consent)
+	var report := Suitability.evaluate(self, consent, evidence, records)
 	var investigation := _investigation(consent, evidence, records, vehicles)
+	investigation["hints"] = Suitability.hints(self, report)
 	var truth := _truth(consent, evidence, records, vehicles)
+	truth["suitability"] = report
 	truth["relevance"] = Relevance.judge(self, evidence, records)
 	var web: Array = Relevance.web(self)
 	truth["relevance_web"] = web
 	truth["relevance_footprint"] = Relevance.footprint(self, web)
-	return {"case_id": case_id, "investigation": investigation, "truth": truth, "eligibility": eligibility(inc)}
+	return {"case_id": case_id, "investigation": investigation, "truth": truth, "eligibility": eligibility(inc),
+			"suitability": report}
 
 
 # ================================================================ testimony
@@ -298,7 +316,7 @@ func _resident(rid: String) -> void:
 		var c: Dictionary = b["claim"]
 		if not _relevant(b, c):
 			continue
-		var rec: Dictionary = Memory.recollect(b, now, SimRng.new([sim.config["seed"], "recall", case_id, b["id"]]))
+		var rec: Dictionary = Memory.recollect(b, now, SimRng.new([sim.config["seed"], "recall", recall_id, b["id"]]))
 		var claim: Dictionary = rec["claim"]
 		var disc := _disclosure(r, b, claim, conf)
 		var disclosure: String = disc[0]
@@ -991,7 +1009,7 @@ func _investigation(consent: Dictionary, evidence: Dictionary, records: Dictiona
 		"records": rec_out,
 		"testimony": testimony,
 		"theory_options": {"mechanisms": mechanisms, "motives": motives},
-		"hints": [],  # Pilot 4B: grounded hints come with the suitability check
+		"hints": [],  # the ladder of hints is added once the suitability report is in (build)
 		"hint_credits": 6,
 	}
 

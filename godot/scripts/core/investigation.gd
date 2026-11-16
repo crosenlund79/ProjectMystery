@@ -643,6 +643,10 @@ func next_hint_cost():
 
 # --------------------------------------------------------------------------- timeline
 func entry_less(a: String, b: String) -> bool:
+	return order_less(a, b)
+
+
+static func order_less(a: String, b: String) -> bool:
 	## Python _entry_order: (prefix letter, number).
 	if a.substr(0, 1) != b.substr(0, 1):
 		return a.substr(0, 1) < b.substr(0, 1)
@@ -729,7 +733,7 @@ static func kind_of(a: Dictionary, b: Dictionary, ia: Dictionary, ib: Dictionary
 	return "firm" if depth > C_APPROX else "approximate"
 
 
-func _raw_less(p: Dictionary, q: Dictionary) -> bool:
+static func _raw_less(p: Dictionary, q: Dictionary) -> bool:
 	## Python: (who, places, lo, hi, entry order of a, entry order of b).
 	if p["who"] != q["who"]:
 		return String(p["who"]) < String(q["who"])
@@ -741,19 +745,19 @@ func _raw_less(p: Dictionary, q: Dictionary) -> bool:
 	if int(p["hi"]) != int(q["hi"]):
 		return int(p["hi"]) < int(q["hi"])
 	if p["a"] != q["a"]:
-		return entry_less(p["a"], q["a"])
-	return entry_less(p["b"], q["b"])
+		return order_less(p["a"], q["a"])
+	return order_less(p["b"], q["b"])
 
 
-func _found_less(p: Dictionary, q: Dictionary) -> bool:
+static func _found_less(p: Dictionary, q: Dictionary) -> bool:
 	## Python: (overlap start, who, entry order of a, entry order of b).
 	if int(p["overlap"][0]) != int(q["overlap"][0]):
 		return int(p["overlap"][0]) < int(q["overlap"][0])
 	if p["who"] != q["who"]:
 		return String(p["who"]) < String(q["who"])
 	if p["a"] != q["a"]:
-		return entry_less(p["a"], q["a"])
-	return entry_less(p["b"], q["b"])
+		return order_less(p["a"], q["a"])
+	return order_less(p["b"], q["b"])
 
 
 static func _strength(r: Dictionary, info: Dictionary) -> Array:
@@ -773,19 +777,35 @@ static func _span(f: Dictionary) -> Dictionary:
 
 
 func contradictions(facts: Array, info: Dictionary) -> Array:
+	return find_contradictions(facts, info)
+
+
+static func find_contradictions(facts: Array, info: Dictionary) -> Array:
+	## Static so that the case generator can ask the same question of a case before anyone plays it
+	## (case_suitability.gd). Pairs are visited in the same order as a plain double loop over the facts, only
+	## skipping straight to the facts about the same person.
+	var by_who := {}
+	var slot := []
+	for i in range(facts.size()):
+		var w = facts[i]["who"]
+		if not by_who.has(w):
+			by_who[w] = []
+		slot.append(by_who[w].size())
+		by_who[w].append(i)
 	var raw := []
 	for i in range(facts.size()):
 		var a: Dictionary = facts[i]
-		for j in range(i + 1, facts.size()):
-			var b: Dictionary = facts[j]
-			if a["who"] != b["who"] or a["place"] == b["place"] or a["entry"] == b["entry"]:
+		var same: Array = by_who[a["who"]]
+		for k in range(int(slot[i]) + 1, same.size()):
+			var b: Dictionary = facts[same[k]]
+			if a["place"] == b["place"] or a["entry"] == b["entry"]:
 				continue
 			var c := clash(a, b)
 			if c.is_empty():
 				continue
 			var x := a
 			var y := b
-			if entry_less(String(b["entry"]), String(a["entry"])):
+			if order_less(String(b["entry"]), String(a["entry"])):
 				x = b
 				y = a
 			var places := [String(x["place"]), String(y["place"])]
@@ -794,7 +814,7 @@ func contradictions(facts: Array, info: Dictionary) -> Array:
 			raw.append({"who": a["who"], "places": places, "a": x["entry"], "b": y["entry"], "fa": x, "fb": y,
 					"depth": int(c[0]), "lo": int(c[1]), "hi": int(c[2]),
 					"kind": kind_of(x, y, info[x["entry"]], info[y["entry"]], int(c[0]))})
-	raw.sort_custom(_raw_less)
+	raw.sort_custom(func(p, q): return _raw_less(p, q))
 	var groups := []
 	for r in raw:
 		var home = null
@@ -825,11 +845,11 @@ func contradictions(facts: Array, info: Dictionary) -> Array:
 					seen[e] = true
 					entries.append(e)
 			pairs.append([r["a"], r["b"], r["kind"]])
-		entries.sort_custom(entry_less)
+		entries.sort_custom(func(p, q): return order_less(p, q))
 		out.append({"who": g["who"], "kind": best["kind"], "a": best["a"], "b": best["b"],
 				"a_fact": _span(best["fa"]), "b_fact": _span(best["fb"]), "overlap": [int(best["lo"]), int(best["hi"])],
 				"depth": int(best["depth"]), "entries": entries, "pairs": pairs})
-	out.sort_custom(_found_less)
+	out.sort_custom(func(p, q): return _found_less(p, q))
 	return out
 
 

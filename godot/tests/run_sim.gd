@@ -1,7 +1,7 @@
 ## Headless demonstration of the native town simulation (no Python, no rendering, no network):
 ##   godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal
 ##       [--residents=10] [--memory=off] [--crime] [--violence=off] [--shop-self-service=off] [--cases] [--out=<folder>]
-##       [--golden]
+##       [--golden] [--generate]
 ## Prints the town, its people, the first day hour by hour, a line per day, the end state, the integrity
 ## checks and the event-log digest; --out writes the whole history as JSON; --golden checks the pinned
 ## digests in tests/sim_golden.json (the same check the Windows tests make); --crime turns on the whole crime layer
@@ -9,8 +9,11 @@
 ## leaves out the latter) and prints what really happened against what the town came to believe.
 ## --shop-self-service=off runs Python's shop rule, without the grocery deadlock fix. --cases (Pilot 4A) freezes every
 ## case candidate at its case start (scripts/cases/), prints what the investigator would meet and whether a playable
-## mystery could ever be made of it, and with --out writes each case's investigation and sealed truth as JSON. Exit
-## code 0 only if every check passed.
+## mystery could ever be made of it, and with --out writes each case's investigation and sealed truth as JSON.
+## --generate (Pilot 4B) makes playable cases: every candidate packaged as a .mcase, judged by the truth-blind
+## investigator and checked against its sealed truth; with --out the playable ones go to <out>/cases and every package
+## to <out>/all; with --golden the package bytes are checked against tests/case_golden.json. Exit code 0 only if every
+## check passed.
 extends SceneTree
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -21,6 +24,8 @@ const Memory = preload("res://scripts/sim/sim_memory.gd")
 const Incidents = preload("res://scripts/sim/sim_incidents.gd")
 const CaseBuilder = preload("res://scripts/cases/case_builder.gd")
 const CaseExtract = preload("res://scripts/cases/case_extract.gd")
+const CaseGenerate = preload("res://scripts/cases/case_generate.gd")
+const TestGeneration = preload("res://tests/test_generation.gd")
 
 const DAY := 1440
 
@@ -30,6 +35,7 @@ func _initialize() -> void:
 	var out := ""
 	var golden := false
 	var with_cases := false
+	var generate := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--seed="):
 			cfg["seed"] = int(a.substr(7))
@@ -53,12 +59,23 @@ func _initialize() -> void:
 			cfg["shop_self_service"] = false
 		elif a == "--cases":
 			with_cases = true
+		elif a == "--generate":
+			generate = true
 	for path in TestSim.SCRIPTS:
 		var script = load(path)
 		if script == null or not script.can_instantiate():
 			printerr("SCRIPT ERROR: %s does not compile" % path)
 			quit(1)
 			return
+	if generate:
+		for path in TestGeneration.SCRIPTS:
+			var script = load(path)
+			if script == null or not script.can_instantiate():
+				printerr("SCRIPT ERROR: %s does not compile" % path)
+				quit(1)
+				return
+		quit(0 if _generate(cfg, out, golden) else 1)
+		return
 	var started := Time.get_ticks_msec()
 	var sim = Simulation.new(cfg)
 	if not sim.ok:
@@ -422,3 +439,65 @@ func _cases(sim, cases: Dictionary, problems: Dictionary, out: String) -> void:
 				var f := FileAccess.open(out.path_join("case-%s-%s.json" % [c["case_id"], view]), FileAccess.WRITE)
 				f.store_string(JSON.stringify(c[view], " ", true))
 				f.close()
+
+
+func _generate(cfg: Dictionary, out: String, golden: bool) -> bool:
+	## Pilot 4B: from a month of the town to playable case files, judged without the truth.
+	var started := Time.get_ticks_msec()
+	var c := cfg.duplicate()
+	c["crime"] = true
+	var playable_dir := (out + "/cases/") if out != "" else ""
+	var all_dir := (out + "/all/") if out != "" else ""
+	var got: Dictionary = CaseGenerate.generate(c, playable_dir, "", all_dir)
+	var sim = got["sim"]
+	print("== Project Mystery: native case generation (Godot, no Python) ==")
+	print("Seed %d, %s season, %d residents, %d days, crime on" % [sim.config["seed"], sim.config["profile"],
+			sim.ids.size(), sim.config["days"]])
+	var digests := {}
+	for r in got["results"]:
+		digests[r["case_id"]] = r["package_sha256"]
+		print("\n%s  %s (%s)" % [r["case_id"], r["title"], r["family"]])
+		print("  %s: %s" % ["PLAYABLE" if r["accepted"] else "rejected at %s" % r["stage"], r["reason"]])
+		var s: Dictionary = r["solver"]
+		var counts: Dictionary = s.get("counts", {})
+		print("  truth-blind investigator: %s after %d questions (%d pressed), %d places, %d vehicles, %d books, %d notebook entries" % [
+				("names %s: %s, %s" % [s["responsible"], s["mechanism"], s["motive"]]) if s.get("ok", false) else "no conclusion (%s)" % s.get("reason", ""),
+				counts.get("questions", 0), counts.get("pressed", 0), counts.get("places", 0), counts.get("vehicles", 0),
+				counts.get("books", 0), counts.get("notebook", 0)])
+		if not r["check"].is_empty():
+			print("  checked against the sealed truth afterwards: %s" % JSON.stringify(r["check"], "", true))
+		if r["accepted"]:
+			print("  quality: %d statements, %d%% unrelated; %s" % [r["quality"]["statements"],
+					roundi(r["quality"]["unrelated_share"] * 100), "; ".join(PackedStringArray(r["quality"]["concerns"]))
+					if not r["quality"]["concerns"].is_empty() else "no concerns"])
+			if r["path"] != "":
+				print("  written: %s" % r["path"])
+		print("  package: %d bytes, SHA-256 %s" % [r["bytes"], r["package_sha256"]])
+	var y: Dictionary = CaseGenerate.yield_report(got["results"], 1)
+	print("\nYield: %d candidates, %d eligible, %d playable, %d rejected; %d false accusations" % [y["candidates"],
+			y["eligible"], y["solvable"], y["rejected"], y["false_accusations"]])
+	var ok: bool = y["false_accusations"] == 0
+	print("Event log: %d events, SHA-256 %s" % [sim.events.events.size(), sim.events.digest()])
+	print("Generated in %d ms on %s (%s)." % [Time.get_ticks_msec() - started, OS.get_name(),
+			Engine.get_version_info()["string"]])
+	print("CASE GOLDEN %s" % JSON.stringify({TestGeneration.golden_key(c): digests}, "", true))
+	if golden:
+		var hist = JSON.parse_string(FileAccess.get_file_as_string(TestSim.GOLDEN))
+		var hk := TestSim.golden_key(c)
+		if hist.has(hk):
+			var same: bool = hist[hk] == sim.events.digest()
+			print("GOLDEN %s: %s" % [hk, "matches the pinned history" if same else "DIFFERS from the pinned history"])
+			ok = ok and same
+		if FileAccess.file_exists(TestGeneration.GOLDEN):
+			var pinned = JSON.parse_string(FileAccess.get_file_as_string(TestGeneration.GOLDEN))
+			var key := TestGeneration.golden_key(c)
+			if pinned.has(key):
+				var same_files: bool = JSON.stringify(pinned[key], "", true) == JSON.stringify(digests, "", true)
+				print("CASE GOLDEN %s: %s" % [key, "every package matches the pinned bytes" if same_files
+						else "packages DIFFER from the pinned bytes"])
+				ok = ok and same_files
+			else:
+				print("CASE GOLDEN %s: not pinned yet" % key)
+		else:
+			print("CASE GOLDEN: not pinned yet (no %s)" % TestGeneration.GOLDEN)
+	return ok
