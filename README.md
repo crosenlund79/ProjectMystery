@@ -73,12 +73,21 @@ simulation itself into Godot.
 The town simulation is moving into Godot as well, with no Python at all. It lives in `godot/scripts/sim/`:
 - Pilot 1: residents living in a town.
 - Pilot 2: what they see, hear, remember, get wrong and tell each other.
+- Pilot 3A: theft and financial incidents: who steals and why, hidden loot, losses found when the till is
+  counted, traces, the incident registry, and whom the town wrongly or rightly suspects. It is behind a `crime`
+  switch, off by default.
 
 [`docs/godot-simulation-migration.md`](docs/godot-simulation-migration.md) has the module map, the boundaries,
 the test results and the next step. To watch a town live for two weeks, headless, with how its news got round:
 
 ```bash
 godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal --out=sim-demo
+```
+
+A month of hard times with the crime layer on, with the truth about each theft set against what the town believes:
+
+```bash
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=21 --days=30 --profile=tension --crime
 ```
 
 ## The Python laboratory
@@ -315,7 +324,8 @@ mystery/
 godot/          the Godot 4.3 game (see docs/godot-migration.md)
   scripts/core/ case loading, investigation rules, verdict, saves (no UI)
   scripts/ui/   menus, investigation screen, timeline, reveal, theme
-  scripts/sim/  the native town simulation (residents, routines, money, relationships; perception, memory, gossip)
+  scripts/sim/  the native town simulation (residents, routines, money, relationships; perception, memory, gossip;
+                theft and financial incidents)
   cases/        the bundled case library; tests/  Godot tests and parity fixtures
 Play-Mystery.cmd, Mystery-Lab.cmd   double-click launchers for Windows (Python laboratory and text game)
 tools/          find-python.cmd (shared by the launchers); wine/ launcher test harness
