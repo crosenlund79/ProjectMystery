@@ -91,6 +91,20 @@ static func do_work(sim, r, ta: int) -> void:
 		for cid in ["till:" + place, "stock:" + place]:
 			if sim.world.containers.has(cid):
 				sim.count_container(sim.world.containers[cid], r.id, ta)
+	if place == "grocery":
+		_provision(sim, r, ta)
+
+
+static func _provision(sim, r, ta: int) -> void:
+	## Someone working at the grocery whose household is running short buys food during their shift, as anyone else
+	## would decide to go shopping (the same need: less than half a week's food, nobody in the household has shopped
+	## today): from a colleague serving, or serving themselves. Not in Python, where a diligent grocer living alone
+	## never leaves work to shop and so seldom has food at home (docs/godot-simulation-migration.md).
+	if not sim.business_open("grocery", ta):
+		return
+	if sim.pantry(r)["food"] >= sim.members(r).size() * 4 or int(sim.daily.get("shopped:" + r.household, 0)) > 0:
+		return
+	shop(sim, r, ta)
 
 
 static func eat(sim, r, ta: int) -> void:
@@ -159,8 +173,15 @@ static func drink(sim, r, ta: int, limit := 2) -> void:
 
 @warning_ignore("integer_division")
 static func shop(sim, r, ta: int) -> void:
+	## Buying food at the grocery, from someone serving there. Someone who works there may serve themselves while
+	## the shop is open and nobody else is serving: at the usual price, paid into the till and written in the
+	## ledger like any sale, but never on credit. Python has no self-service: there, two shop workers whose pantries
+	## are both empty go shopping in their own shop, neither counts as serving, and nobody in town can buy food
+	## again (the grocery deadlock; a deliberate difference, docs/godot-simulation-migration.md).
 	var staff := _staff_other_than(sim, "grocery", r.id, ta)
-	if staff.is_empty():
+	var self_service: bool = (staff.is_empty() and r.id in sim.world.locations["grocery"]["staff"]
+			and sim.business_open("grocery", ta))
+	if staff.is_empty() and not self_service:
 		return
 	var shopped_key: String = "shopped:" + r.household
 	sim.daily[shopped_key] = int(sim.daily.get(shopped_key, 0)) + 1
@@ -177,25 +198,30 @@ static func shop(sim, r, ta: int) -> void:
 			sim.add_pressure(r, ev, 5)
 		return
 	var units := mini(want, r.cash / price)
-	var clerk: String = staff[sim.rng.randrange(staff.size())]
+	var clerk: String = r.id if self_service else staff[sim.rng.randrange(staff.size())]
 	if units > 0:
 		var cost := units * price
-		var ev: Dictionary = sim.emit("purchase", "grocery", [r.id], {"targets": [clerk],
-				"objects": [till["id"], stock["id"]], "data": {"units": units, "paid": cost}, "intent": "lawful",
-				"time": ta, "summary": "%s buys %d units of food for %d." % [r.first, units, cost]})
+		var data := {"units": units, "paid": cost}
+		if self_service:
+			data["self_service"] = true  # only on these sales, so every other purchase event is as before
+		var ev: Dictionary = sim.emit("purchase", "grocery", [r.id], {"targets": [] if self_service else [clerk],
+				"objects": [till["id"], stock["id"]], "data": data, "intent": "lawful", "time": ta,
+				"summary": ("%s serves themselves %d units of food and pays %d into the till." if self_service
+						else "%s buys %d units of food for %d.") % [r.first, units, cost]})
 		sim.transfer("cash", "wallet:" + r.id, "box:" + till["id"], cost, ev["id"], ta)
 		sim.transfer("food", "box:" + stock["id"], "box:" + pantry["id"], units, ev["id"], ta)
 		till["expected_cash"] += cost
 		stock["expected_food"] -= units
 		pantry["expected_food"] += units
-		var line := "%s sale to %s: %d units, %d cr" % [SimClock.fmt(ta), r.full_name(), units, cost]
+		var line := "%s sale to %s: %d units, %d cr%s" % [SimClock.fmt(ta), r.full_name(), units, cost,
+				" (self-service)" if self_service else ""]
 		sim.world.record("ledger", ta, line, ev["id"])
 		if sim.memory_on:
 			sim.add_belief(r.id, Memory.claim("purchase", {"subject": r.id, "location": "grocery", "start": ta,
 					"amount": cost, "detail": "%d units" % units}), "self", 0.95, ta, {"event": ev["id"]})
 		if sim.crime_on and sim.rng.random() < 0.015 * (1 - sim.residents[clerk].traits["diligence"]):
 			Crime.ledger_error(sim, clerk, r, till, cost, line, ev, ta)
-	if units < want and units < size * 3:
+	if units < want and units < size * 3 and not self_service:
 		ask_credit(sim, r, staff, want - units, ta)
 
 

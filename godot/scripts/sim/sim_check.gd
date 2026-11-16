@@ -37,6 +37,7 @@ static func problems(sim) -> Array:
 	_check_presence(sim, out)
 	_check_people(sim, out)
 	_check_debts(sim, out)
+	_check_shop(sim, out)
 	_check_memory(sim, out)
 	_check_crime(sim, out)
 	_check_violence(sim, out)
@@ -195,6 +196,41 @@ static func _check_debts(sim, out: Array) -> void:
 				out.append("%s is settled without a repayment" % d["id"])
 		elif d["settled_event"] != "":
 			out.append("%s is open but has a repayment" % d["id"])
+
+
+static func _check_shop(sim, out: Array) -> void:
+	## Every sale at the grocery: while it is open, at the season's price, paid from the buyer's purse into the till,
+	## the food from the shop's stock into the buyer's household pantry. It is served by someone else who works
+	## there and is in the shop, or (only in Godot: the grocery deadlock fix) by someone who works there serving
+	## themselves, which is marked on the sale.
+	var staff: Array = sim.world.locations["grocery"]["staff"]
+	var price: int = sim.profile["food_price"]
+	var moved := {}  # event -> its transfers
+	for tr in sim.world.transfers:
+		if not moved.has(tr["event"]):
+			moved[tr["event"]] = []
+		moved[tr["event"]].append([tr["asset"], tr["src"], tr["dst"], tr["amount"]])
+	for ev in sim.events.events:
+		if ev["kind"] != "purchase":
+			continue
+		var buyer: String = ev["actors"][0]
+		var units: int = ev["data"]["units"]
+		var paid: int = ev["data"]["paid"]
+		if ev["location"] != "grocery" or not sim.business_open("grocery", ev["time"]):
+			out.append("sale %s is not at the open grocery" % ev["id"])
+		if paid != units * price:
+			out.append("sale %s: %d units for %d crowns, not the price of %d" % [ev["id"], units, paid, price])
+		var want := [["cash", "wallet:" + buyer, "box:till:grocery", paid],
+				["food", "box:stock:grocery", "box:pantry:" + String(sim.residents[buyer].household), units]]
+		if JSON.stringify(moved.get(ev["id"], [])) != JSON.stringify(want):
+			out.append("sale %s moved %s, not %s" % [ev["id"], JSON.stringify(moved.get(ev["id"], [])), JSON.stringify(want)])
+		if ev["data"].get("self_service", false):
+			if not (buyer in staff) or not ev["targets"].is_empty():
+				out.append("self-service sale %s by %s, who does not work at the grocery" % [ev["id"], buyer])
+		else:
+			var clerk = ev["targets"][0] if ev["targets"].size() == 1 else null
+			if clerk == null or clerk == buyer or not (clerk in staff) or sim.where(clerk, ev["time"]) != "grocery":
+				out.append("sale %s is served by %s, not by someone else working in the shop" % [ev["id"], clerk])
 
 
 static func involved(rid: String, ev: Dictionary) -> bool:

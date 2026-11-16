@@ -72,7 +72,7 @@ func run(t, _tree) -> void:
 	var crime_runs := _runs(CRIME_SEEDS, "crime")
 	_integrity(t, crime_runs)
 	_daily_life(t, crime_runs)
-	_matches_python(t, crime_runs, CRIME_REFERENCE, "crime-vs-python", true)
+	_matches_python(t, crime_runs, CRIME_REFERENCE, "crime-vs-python")
 	_violence_rate(t, crime_runs)
 	_golden(t)
 
@@ -121,9 +121,14 @@ func _runs(seeds: Array, layer: String) -> Array:
 						counts.get("assault", 0), counts.get("fall", 0), counts.get("collision", 0), _fled(sim),
 						counts.get("death", 0), counts.get("treated", 0), counts.get("repair", 0),
 						counts.get("injury_found", 0), counts.get("body_found", 0)]
+			var self_served := 0
+			for ev in sim.events.events:
+				if ev["kind"] == "purchase" and ev["data"].get("self_service", false):
+					self_served += 1
+			detail += "; %d self-service sales" % self_served
 			var stall := _stall_day(sim)
 			if stall > 0:
-				detail += "; the grocery stalled from Day %d (its staff went shopping in their own shop)" % stall
+				detail += "; the grocery stalled from Day %d" % stall
 			print("  simulated %s seed %d%s: %d days, %d events, %d ms%s" % [profile, seed,
 					{"off": "", "theft": ", crime on, violence off", "crime": ", crime on"}[layer], DAYS,
 					sim.events.events.size(), Time.get_ticks_msec() - started, detail])
@@ -281,13 +286,15 @@ static func _tolerance(key: String, mean: float, sd: float) -> float:
 	return maxf(maxf(0.25 * absf(mean), 2.5 * sd), least)
 
 
-func _matches_python(t, runs: Array, reference: String, label: String, trading_only := false) -> void:
-	## trading_only: compare the months in which the grocery kept trading to the end, on both sides (a stalled
-	## month, see _stall_day, is an absorbing state of the shared rules that dominates a season's mean of five
-	## months), and report how often it stalled on each side.
-	t.begin("behaviour matches the Python simulation (%s)" % {REFERENCE: "crime layer off on both sides",
+func _matches_python(t, runs: Array, reference: String, label: String) -> void:
+	## Godot's grocery never stalls (the deadlock fix, tests/test_grocery.gd): that is checked here for every run.
+	## Python's can (a stalled month, see _stall_day, is an absorbing state that dominates a season's mean), so
+	## Godot is compared with Python's months in which the grocery kept trading to the end, and Python's stall
+	## count is reported.
+	t.begin("behaviour matches the Python simulation (%s; Python's months in which the grocery kept trading)" % {
+			REFERENCE: "crime layer off on both sides",
 			THEFT_REFERENCE: "stealing on, violence and accidents off on both sides",
-			CRIME_REFERENCE: "the whole crime layer on both sides, months in which the grocery kept trading"}[reference])
+			CRIME_REFERENCE: "the whole crime layer on both sides"}[reference])
 	var text := FileAccess.get_file_as_string(reference)
 	var ref = JSON.parse_string(text)
 	t.check(ref is Dictionary and ref.has("profiles"), "no reference statistics in " + reference)
@@ -304,10 +311,10 @@ func _matches_python(t, runs: Array, reference: String, label: String, trading_o
 			if rn["profile"] != profile:
 				continue
 			months += 1
-			if _stall_day(rn["sim"]) > 0:
+			var stall := _stall_day(rn["sim"])
+			t.check(stall < 0, "%s %s seed %d: the grocery stalled from Day %d" % [label, profile, rn["seed"], stall])
+			if stall > 0:
 				stalled += 1
-				if trading_only:
-					continue
 			var flat := SimCheck.flatten(SimCheck.stats(rn["sim"]))
 			for k in flat:
 				if flat[k] < 0:
@@ -315,11 +322,10 @@ func _matches_python(t, runs: Array, reference: String, label: String, trading_o
 				sums[k] = float(sums.get(k, 0.0)) + flat[k]
 				counts[k] = int(counts.get(k, 0)) + 1
 		var py: Dictionary = ref["profiles"][profile]
-		print("  %s %-9s the grocery stalled in %d of %d months (python: %d of %d)%s" % [label, profile, stalled,
-				months, int(py.get("stalled_months", 0)), Array(ref["seeds"]).size(),
-				"; compared: the months it kept trading" if trading_only else ""])
-		var mean_key := "mean_trading" if trading_only else "mean"
-		var sd_key := "sd_trading" if trading_only else "sd"
+		print("  %s %-9s the grocery stalled in %d of %d months (python: %d of %d, left out of the comparison)" % [
+				label, profile, stalled, months, int(py.get("stalled_months", 0)), Array(ref["seeds"]).size()])
+		var mean_key := "mean_trading"
+		var sd_key := "sd_trading"
 		var keys: Array = py[mean_key].keys()
 		keys.sort()
 		for k in keys:
