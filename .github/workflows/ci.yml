@@ -151,7 +151,7 @@ jobs:
       - name: Simulation summary (repeated from the test log so it is easy to find)
         if: always()
         shell: bash
-        run: grep -E "simulated |sim-vs-python|GOLDEN|test_sim" godot-tests.log || echo "no simulation lines in the test log"
+        run: grep -E "simulated |sim-vs-python|GOLDEN|^== test_(sim|memory)|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
 
   screens:
     name: Godot game - screenshots and web build (Linux)

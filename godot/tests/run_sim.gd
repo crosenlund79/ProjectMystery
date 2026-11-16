@@ -163,26 +163,29 @@ func _knowledge(sim) -> void:
 	print("  Got wrong: %s.  Passed on in chats: %d.  Suspicions formed: %d." % [
 			JSON.stringify(by_error).replace("\"", ""), int(sim.stats.get("gossip_transfers", 0)),
 			int(sim.stats.get("suspicions", 0))])
-	# the argument most people came to know of, and how each of them came to know
+	# the piece of news most people came to know of (an argument, a refusal, missed rent, a layoff), and how
+	# each of them came to know
 	var knowers := {}
 	for bid in sim.beliefs:
 		var b: Dictionary = sim.beliefs[bid]
 		var root: Dictionary = SimCheck._root(sim, b)
 		if root["event"]:
 			if not knowers.has(root["event"]):
-				knowers[root["event"]] = []
-			knowers[root["event"]].append(b)
+				knowers[root["event"]] = {}
+			if not knowers[root["event"]].has(b["holder"]):
+				knowers[root["event"]][b["holder"]] = b  # the first way each holder heard of it
 	var best := {}
+	var most := 0
 	for ev in sim.events.events:
-		if ev["kind"] == "argument" and (best.is_empty() or knowers.get(ev["id"], []).size() > knowers.get(best["id"], []).size()):
-			best = ev
+		if ev["kind"] in ["argument", "loan_refused", "credit_refused", "rent_missed", "laid_off"]:
+			var count: int = knowers.get(ev["id"], {}).size()
+			if count > most:
+				best = ev
+				most = count
 	if not best.is_empty():
 		print("\nHow word got round: %s (%s, %s)" % [best["summary"], _when(best["time"]), sim.world.name_of(best["location"])])
-		var seen_holders := {}
-		for b in knowers.get(best["id"], []):
-			if seen_holders.has(b["holder"]):
-				continue
-			seen_holders[b["holder"]] = true
+		for holder in knowers[best["id"]]:
+			var b: Dictionary = knowers[best["id"]][holder]
 			var chain := []
 			var x: Dictionary = b
 			while x["source"] == "told" and x["via"] != null:
@@ -201,6 +204,16 @@ func _knowledge(sim) -> void:
 			print("\nA mistake: at %s, %s saw someone at %s and took them for %s. It was %s." % [_when(b["acquired"]),
 					sim.n(b["holder"]), sim.world.name_of(b["claim"]["location"]), sim.n(b["claim"]["subject"]), sim.n(truly)])
 			break
+	# a rumour whose time drifted in the telling, set against the truth
+	for bid in sim.beliefs:
+		var b: Dictionary = sim.beliefs[bid]
+		if b["error"] == "time_distorted" and b["source"] == "told" and b["claim"]["start"] != null:
+			var root: Dictionary = SimCheck._root(sim, b)
+			if root["event"] and root["claim"]["start"] != null and root["claim"]["start"] != b["claim"]["start"]:
+				print("A rumour that drifted: %s told %s it happened at %s (%s); it was %s." % [sim.n(b["told_by"]),
+						sim.n(b["holder"]), _when(b["claim"]["start"]), str(b["claim"]["kind"]).replace("_", " "),
+						_when(root["claim"]["start"])])
+				break
 	# forgetting: what one resident still recalls of the first day
 	var rid: String = sim.ids[0]
 	var formed := 0
