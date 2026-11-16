@@ -117,7 +117,15 @@ static func _theft_detail(sim) -> String:
 		var kind: String = cid.split(":")[0]
 		kinds[kind] = int(kinds.get(kind, 0)) + 1
 		if inc["discovered_at"] == null:
-			hidden.append("%s Day %d" % [cid, SimClock.day_of(inc["time"])])
+			# when was it last opened, and what do its people carry (a tin is opened only by someone at home at
+			# 7:00 with over 120 crowns to put in or under 25, or a head short of the rent)
+			var c: Dictionary = sim.world.containers[cid]
+			var purses := []
+			if cid.begins_with("box:"):
+				for m in sim.households[cid.substr(4)]:
+					purses.append(sim.residents[m].cash)
+			hidden.append("%s Day %d (last opened Day %d%s)" % [cid, SimClock.day_of(inc["time"]),
+					SimClock.day_of(c["last_check"]), "; its people now carry %s" % str(purses) if not purses.is_empty() else ""])
 	var why := {}
 	for ev in sim.events.events:
 		if ev["kind"] == "theft_aborted":
