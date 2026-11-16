@@ -830,6 +830,16 @@ left as they are: each would change histories, so each needs a decision before i
 - **Deaths are very rare:** none in Godot's 20 months or Python's 40. Only 1.5-3.5% of fights and 8% of walkers hit
   are fatal. A case generator that wants a death will have to look through many towns or longer runs.
 
+**In case extraction** (pilot 4A, Python's rules, ported as they are):
+- **The culprit's false account can be implausible.** It stretches the place they were before the act over the
+  time of it. In the CI demo (seed 1, tension) a thief says he was "at Mill Road from about 08:00" until
+  "home around 18:15": ten hours on a road. A careful player can catch it, which is fair, but nobody would
+  invent that. A better liar would name a believable place, ideally one with no witnesses either way.
+- **Most testimony is beside the point.** A case holds about 530 statements, 91% of them unrelated to the
+  incident. Summaries, topics and eras keep conversations manageable, but pilot 4B's packaging should check that
+  the useful channels can be found in reasonable play.
+- **Small wording quirks.** "Home around 18:15 and to bed" is said of any evening at home of four hours or more.
+
 ## Next: pilot 4B, suitability, packaging and saved case generation
 
 **Recommended scope.** Turn the material pilot 4A extracts into cases the existing game can play, with no
