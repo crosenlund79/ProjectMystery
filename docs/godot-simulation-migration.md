@@ -103,7 +103,7 @@ godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --
 - the first day, hour by hour, and a line per day after that;
 - everyone's state at the end;
 - what the town believes, by source and by mistake;
-- how the most widely known piece of news got round, person by person, with who told whom and when;
+- how the piece of news passed on in the most chats got round, person by person, with who told whom and when;
 - one misidentification and one drifted rumour, each set against the truth;
 - how much one resident has forgotten of Day 1;
 - the integrity checks and the event-log digest.
