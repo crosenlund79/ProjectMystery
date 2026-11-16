@@ -34,6 +34,11 @@ jobs:
       - name: The bundled library regenerates identically from its seeds
         if: runner.os == 'Linux'
         run: python -m mystery build-library --check
+      - name: The simulation reference statistics regenerate identically
+        if: runner.os == 'Linux'
+        run: |
+          python tools/sim_reference.py
+          git diff --exit-code godot/tests/sim_reference.json
 
   godot:
     name: Godot game - tests, Windows export, smoke test
@@ -205,6 +210,26 @@ jobs:
           tail -n 20 web-export.log
           ls -la build/web
           test -f build/web/index.html && test -f build/web/index.pck
+
+      - name: Simulate a town headlessly (native Godot, no Python, no display)
+        run: |
+          mkdir -p sim-demo
+          set +e
+          timeout -k 10 300 "$GODOT" --headless --path godot -s res://tests/run_sim.gd -- \
+            --seed=7 --days=14 --profile=normal --out="$PWD/sim-demo" --golden > sim-demo/run.log 2>&1
+          code=$?
+          set -e
+          cat sim-demo/run.log
+          echo "exit: $code"
+          test "$code" = "0"
+
+      - name: Upload the simulation demo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-demo
+          path: sim-demo/
+          if-no-files-found: ignore
 
       - name: Upload the screenshots
         if: always()
