@@ -15,9 +15,9 @@
 ##              against the household robbed, that people describe.
 ##   assault    someone who was there - the victim, or an eyewitness - names the attacker, and nobody who was there
 ##              names anyone else; drink, a quarrel over money, or bad blood shows why.
-##   collision  one vehicle shows damage matching what was hit (and no earlier damage), and one person is tied to it
-##              at that time: their own story of how it was damaged, or the workshop's repair book; driving on is
-##              panic.
+##   collision  one vehicle shows damage matching what was hit (and no earlier damage, unless mended since), and one
+##              person is tied to it at that time: their own story of how it was damaged, or the workshop's repair
+##              book; driving on is panic.
 ## Rumours, suspicions ("If you ask me ...") and a vehicle glimpsed in the dark never decide anything. The sealed
 ## truth is opened only afterwards, by case_generate.gd, to check the conclusion.
 extends RefCounted
