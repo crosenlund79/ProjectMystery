@@ -188,7 +188,7 @@ func _knowledge(sim) -> void:
 			while x["source"] == "told" and x["via"] != null:
 				chain.append("told by %s (%s)" % [sim.n(x["told_by"]), _when(x["acquired"])])
 				x = sim.beliefs[x["via"]]
-			var how := {"self": "was in it", "saw": "saw it", "heard": "heard it", "inferred": "worked it out"}.get(
+			var how: String = {"self": "was in it", "saw": "saw it", "heard": "heard it", "inferred": "worked it out"}.get(
 					x["source"], x["source"])
 			chain.append("%s %s" % [sim.n(x["holder"]), how])
 			print("  %-8s %s" % [sim.n(b["holder"]) + ":", ", ".join(chain) if chain.size() > 1 else chain[0]])
