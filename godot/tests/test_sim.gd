@@ -36,9 +36,9 @@ const GOLDEN_RUNS := [
 	{"seed": 21, "days": 30, "profile": "tension", "crime": true, "violence": false},
 	{"seed": 7, "days": 30, "profile": "scarcity", "crime": true, "violence": false},
 	{"seed": 5, "days": 30, "profile": "crisis", "residents": 12, "crime": true, "violence": false},
-	{"seed": 21, "days": 30, "profile": "tension", "crime": true},
-	{"seed": 7, "days": 30, "profile": "scarcity", "crime": true},
-	{"seed": 5, "days": 30, "profile": "crisis", "residents": 12, "crime": true},
+	{"seed": 1, "days": 30, "profile": "tension", "crime": true},
+	{"seed": 3, "days": 30, "profile": "tension", "crime": true},
+	{"seed": 1, "days": 30, "profile": "crisis", "crime": true},
 ]
 const SCRIPTS := ["res://scripts/sim/sim_rng.gd", "res://scripts/sim/sim_clock.gd", "res://scripts/sim/sim_config.gd",
 		"res://scripts/sim/sim_world.gd", "res://scripts/sim/sim_resident.gd", "res://scripts/sim/sim_town.gd",
@@ -114,6 +114,8 @@ func _runs(seeds: Array, layer: String) -> Array:
 				detail = "; %d thefts, %d losses found, %d ledger mistakes, %d accusations, %d confessions; %s" % [
 						counts.get("theft", 0), counts.get("loss_discovered", 0), counts.get("ledger_error", 0),
 						_accusations(sim), counts.get("confession", 0), _theft_detail(sim)]
+			if layer != "off":
+				detail += "; " + _economy(sim)
 			if layer == "crime":
 				detail += "; %d fights, %d falls, %d collisions (%d driven on from), %d deaths, %d treated, %d repairs, %d found hurt, %d found dead" % [
 						counts.get("assault", 0), counts.get("fall", 0), counts.get("collision", 0), _fled(sim),
@@ -124,6 +126,20 @@ func _runs(seeds: Array, layer: String) -> Array:
 					sim.events.events.size(), Time.get_ticks_msec() - started, detail])
 			runs.append({"profile": profile, "seed": seed, "sim": sim, "crime": layer != "off", "layer": layer})
 	return runs
+
+
+static func _economy(sim) -> String:
+	## How the town ate: mean hunger, purchases, visits to empty shelves, deliveries, and what the grocer has left.
+	var counts: Dictionary = sim.events.counts()
+	var units := 0
+	for ev in sim.events.events:
+		if ev["kind"] == "delivery":
+			units += int(ev["data"]["units"])
+	var grocer: String = sim.world.containers["till:grocery"]["owners"][0]
+	return "hunger %.0f, %d purchases, %d empty shelves, %d deliveries (%d units), grocery till %d, grocer %d" % [
+			sim.samples["hunger"] / maxf(1.0, float(sim.samples["hours"])), counts.get("purchase", 0),
+			counts.get("no_stock", 0), counts.get("delivery", 0), units, sim.world.containers["till:grocery"]["cash"],
+			sim.residents[grocer].cash]
 
 
 static func _fled(sim) -> int:

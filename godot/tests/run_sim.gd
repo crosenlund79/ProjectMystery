@@ -256,7 +256,7 @@ func _crime(sim) -> void:
 				"; owned up to" if inc["reported_openly"] else ""])
 		var knew := {}
 		var guessed := {}  # "holder -> subject" -> right or wrong (one line each, however often re-inferred)
-		var linked := [inc["core_event"], inc["discovery_event"]] + inc["related_events"]
+		var linked: Array = [inc["core_event"], inc["discovery_event"]] + inc["related_events"]
 		for bid in sim.beliefs:
 			var b: Dictionary = sim.beliefs[bid]
 			var c: Dictionary = b["claim"]
