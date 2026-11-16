@@ -466,7 +466,7 @@ func _accepted(t, months: Array) -> void:
 		var game: Dictionary = CaseGenerate.playthrough(r["path"], ROOT)
 		t.check(game["ok"], "%s: playthrough: %s" % [r["case_id"], game["problems"]])
 		t.eq(game["unsealed_during_play"], 0, "%s: seal opened during play" % r["case_id"])
-		t.eq(game["listed_as"], "imported", "%s: listed by the case library" % r["case_id"])
+		t.eq(game["listed_as"], "generated", "%s: listed by the case library" % r["case_id"])
 		t.check(int(game["score"]) >= 80, "%s: scored %d" % [r["case_id"], game["score"]])
 		var q: Dictionary = r["quality"]
 		print("  PLAYABLE %s (%s, %s): %s | route: %s | %d questions, %d pressed | score %d | %d statements, %d%% unrelated%s" % [

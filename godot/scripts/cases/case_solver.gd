@@ -105,6 +105,11 @@ func run() -> Dictionary:
 	## {"ok", "reason", "mechanism", "responsible", "motive", "cites", "cite_refs", "route", "counts"}; with ok the
 	## theory has been submitted to the (blind) investigation.
 	gather()
+	return conclude()
+
+
+func conclude() -> Dictionary:
+	## Reason from the notebook gathered so far and, if it can, submit the theory (the second half of run()).
 	read_notebook()
 	var d := decide()
 	d["counts"] = counts.duplicate()
@@ -124,34 +129,44 @@ func run() -> Dictionary:
 
 # ================================================================ finding things out
 func gather() -> void:
+	## Everything a careful player can find: every resident questioned (gather_resident), then every place, vehicle and
+	## book (gather_world). The generation screen calls the two parts a little at a time.
+	for r in data["residents"]:
+		gather_resident(r)
+	gather_world()
+
+
+func gather_resident(r: Dictionary) -> void:
 	## What a dodge or a hesitation sounds like: worth pressing on (a smooth talker gives no sign while saying something).
 	var signals_text := [Investigation.EVASIVE["nervous"], Investigation.EVASIVE["smooth"], Investigation.HESITATE["nervous"]]
-	for r in data["residents"]:
-		var rid: String = r["id"]
-		if r["condition"] == "deceased" or not data["testimony"].has(rid):
+	var rid: String = r["id"]
+	if r["condition"] == "deceased" or not data["testimony"].has(rid):
+		return
+	var signals := []
+	for t in inv.topics(rid):
+		var topic: String = t[0]
+		var res: Dictionary = inv.ask(rid, topic)
+		counts["questions"] += 1
+		for line in res.get("lines", []):
+			if line["text"] in signals_text and not (topic in signals):
+				signals.append(topic)
+		_exhaust(rid, topic)
+	var order: Array = signals.duplicate()
+	for topic in PRESS_ORDER:
+		if not (topic in order):
+			order.append(topic)
+	for topic in order:
+		if int(inv.state["goodwill"].get(rid, 0)) <= 0:
+			break
+		if inv.state["pressed"].get(rid, []).has(topic):
 			continue
-		var signals := []
-		for t in inv.topics(rid):
-			var topic: String = t[0]
-			var res: Dictionary = inv.ask(rid, topic)
-			counts["questions"] += 1
-			for line in res.get("lines", []):
-				if line["text"] in signals_text and not (topic in signals):
-					signals.append(topic)
-			_exhaust(rid, topic)
-		var order: Array = signals.duplicate()
-		for topic in PRESS_ORDER:
-			if not (topic in order):
-				order.append(topic)
-		for topic in order:
-			if int(inv.state["goodwill"].get(rid, 0)) <= 0:
-				break
-			if inv.state["pressed"].get(rid, []).has(topic):
-				continue
-			inv.ask(rid, topic, true)
-			counts["questions"] += 1
-			counts["pressed"] += 1
-			_exhaust(rid, topic)
+		inv.ask(rid, topic, true)
+		counts["questions"] += 1
+		counts["pressed"] += 1
+		_exhaust(rid, topic)
+
+
+func gather_world() -> void:
 	for p in data["places"]:
 		inv.inspect_place(p["id"])
 		counts["places"] += 1

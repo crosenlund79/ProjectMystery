@@ -28,7 +28,7 @@ const SaveStore = preload("res://scripts/core/save_store.gd")
 const Investigation = preload("res://scripts/core/investigation.gd")
 const Verdict = preload("res://scripts/core/verdict.gd")
 
-## Where the player's game looks for cases besides the bundled library (CaseLibrary, "imported").
+## Where the player's game looks for cases besides the bundled library (CaseLibrary lists them as "generated").
 const DEFAULT_OUT := "user://cases/"
 ## Reporting thresholds for quality concerns (never a reason to reject a case).
 const NOISY_SHARE := 0.95  # a case where at least this share of the statements has nothing to do with it
@@ -61,6 +61,17 @@ static func generate(cfg: Dictionary, out_dir := "", selected := "", all_dir := 
 
 
 static func judge(case_: Dictionary, out_dir := "", all_dir := "") -> Dictionary:
+	var st := judge_begin(case_, all_dir)
+	if st["done"]:
+		return st["r"]
+	st["solver"].gather()
+	return judge_end(st, out_dir)
+
+
+static func judge_begin(case_: Dictionary, all_dir := "", probe := true) -> Dictionary:
+	## The first part of judge(): package the case and read it back as any player's game reads a case file, and set the
+	## truth-blind investigator to work on the player's view. {"done", "r", ...}: done when the case is already
+	## rejected. Without probe, an ineligible case is rejected at once (the investigator is not asked about it).
 	var inv: Dictionary = case_["investigation"]
 	var truth: Dictionary = case_["truth"]
 	var inc: Dictionary = truth["incident"]
@@ -69,29 +80,48 @@ static func judge(case_: Dictionary, out_dir := "", all_dir := "") -> Dictionary
 			"eligible": el["eligible"], "eligibility": el["reason"], "verdict": truth["suitability"]["verdict"],
 			"accepted": false, "stage": "", "reason": "", "solver": {}, "check": {}, "quality": {}, "package_sha256": "",
 			"bytes": 0, "path": "", "false_accusation": false, "suitability": _report_summary(truth["suitability"])}
-	# the package, read back exactly as a player's game reads a case file
+	var st := {"done": true, "r": r, "case": case_, "pkg": {}, "text": "", "solver": null}
+	if not el["eligible"] and not probe:
+		_reject(r, "eligibility", el["reason"])
+		return st
 	var file_text := CasePackage.to_text(CasePackage.build(case_))
+	st["text"] = file_text
 	r["package_sha256"] = file_text.sha256_text()
 	r["bytes"] = file_text.length()
 	if all_dir != "":
 		CasePackage.write(file_text, case_["case_id"], all_dir)
 	var loaded := CaseFormat.parse_text(file_text)
 	if not loaded["ok"]:
-		return _reject(r, "package", "the package does not validate: %s" % loaded["errors"][0])
+		_reject(r, "package", "the package does not validate: %s" % loaded["errors"][0])
+		return st
 	var pkg: Dictionary = loaded["package"]
+	st["pkg"] = pkg
 	var leaks := CaseExtract.spoiler_problems(pkg["investigation"])
 	if not leaks.is_empty():
-		return _reject(r, "package", "the player's view carries the truth: %s" % leaks[0])
-	var hints: Array = pkg["investigation"]["hints"]
-	if hints.is_empty():
-		return _reject(r, "package", "no hints")
+		_reject(r, "package", "the player's view carries the truth: %s" % leaks[0])
+		return st
+	if pkg["investigation"]["hints"].is_empty():
+		_reject(r, "package", "no hints")
+		return st
 	# the truth-blind investigator, on the player's view only
-	var solver = CaseSolver.new(pkg)
-	var s: Dictionary = solver.run()
+	st["solver"] = CaseSolver.new(pkg)
+	st["done"] = false
+	return st
+
+
+static func judge_end(st: Dictionary, out_dir := "") -> Dictionary:
+	## The rest of judge(), once the investigator has gathered what it can: its conclusion, and only then the seal
+	## opened to check it.
+	var r: Dictionary = st["r"]
+	var pkg: Dictionary = st["pkg"]
+	var case_: Dictionary = st["case"]
+	var inv: Dictionary = case_["investigation"]
+	var el: Dictionary = case_["eligibility"]
+	var ans: Dictionary = case_["truth"]["answer"]
+	var s: Dictionary = st["solver"].conclude()
 	r["solver"] = {"ok": s["ok"], "reason": s.get("reason", ""), "mechanism": s.get("mechanism", ""),
 			"responsible": s.get("responsible"), "motive": s.get("motive", ""), "route": s.get("route", []),
 			"cites": s.get("cite_refs", []), "counts": s.get("counts", {})}
-	var ans: Dictionary = truth["answer"]
 	if not el["eligible"]:
 		# not a case at all; the investigator is asked anyway, to show it accuses nobody where nobody is to blame
 		r["false_accusation"] = s["ok"] and s.get("responsible") != ans["responsible"]
@@ -128,7 +158,7 @@ static func judge(case_: Dictionary, out_dir := "", all_dir := "") -> Dictionary
 	r["reason"] = "solvable: " + ", ".join(PackedStringArray(s["route"]))
 	r["quality"] = quality(pkg, t)
 	if out_dir != "":
-		r["path"] = CasePackage.write(file_text, pkg["case_id"], out_dir)
+		r["path"] = CasePackage.write(st["text"], pkg["case_id"], out_dir)
 	return r
 
 

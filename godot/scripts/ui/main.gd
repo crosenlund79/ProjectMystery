@@ -15,6 +15,7 @@ const Smoke = preload("res://scripts/core/smoke.gd")
 const InvestigationScreen = preload("res://scripts/ui/investigation_screen.gd")
 const RevealScreen = preload("res://scripts/ui/reveal_screen.gd")
 const IntroScreen = preload("res://scripts/ui/intro_screen.gd")
+const GenerateScreen = preload("res://scripts/ui/generate_screen.gd")
 
 const MODES := ["beginner", "hobby", "experienced"]
 const MODE_HELP := {
@@ -36,6 +37,8 @@ var settings: Dictionary = {}
 var engine = null
 var screen: Control = null
 var current := ""
+## The Generate Mystery settings last used in this session (town size, conditions, days, seed, attempts).
+var generate_settings := {}
 
 
 func _ready() -> void:
@@ -149,7 +152,8 @@ func show_main_menu() -> void:
 	col.add_child(Kit.spacer(18))
 	var target := continue_target()
 	var items := [
-		["New Case", "Choose a case from the library and begin a fresh investigation.", "NewCaseButton", show_new_case],
+		["New Case", "Choose a case from the library, or generate a new mystery, and begin investigating.",
+				"NewCaseButton", show_new_case],
 		["Continue", "Pick up where you left off: %s" % target.get("title", "") if not target.is_empty()
 				else "No investigation in progress yet.", "ContinueButton", func(): open_case(continue_target(), false)],
 		["Load Case", "Your saved investigations, or import a case file.", "LoadCaseButton", show_load],
@@ -201,7 +205,15 @@ func show_new_case(filter := "all") -> void:
 	var root := Kit.vbox(12)
 	root.add_child(_header("New Case"))
 	root.add_child(Kit.label("Each case comes from a real simulated history. Pick one by its season and how much "
-			+ "the town gives away. The details are for you to find.", "MutedLabel"))
+			+ "the town gives away, or generate a new one. The details are for you to find.", "MutedLabel"))
+	var gen_row := Kit.hbox(12)
+	var gen := Kit.button("Generate Mystery…", "Simulate a new town and make a mystery from it", "PrimaryButton",
+			"GenerateMysteryButton")
+	gen.pressed.connect(show_generate)
+	gen_row.add_child(gen)
+	gen_row.add_child(Kit.label("A new town, simulated now; only a mystery that can be solved from the evidence is kept.",
+			"SmallLabel"))
+	root.add_child(gen_row)
 	var filters := [["All difficulties", 0], ["Gentle", 1], ["Standard", 2], ["Hard", 3], ["Very hard", 4]]
 	var keys := ["all", "gentle", "standard", "hard", "very hard"]
 	var opt := Kit.option(filters, keys.find(filter), "Show only cases of one difficulty")
@@ -238,6 +250,11 @@ func _case_card(e: Dictionary) -> Control:
 	v.add_child(Kit.label("%s  ·  %s  ·  starts %s" % [e["town"], e["season"], e["start_label"]], "MutedLabel"))
 	var diff: String = e["difficulty"]
 	v.add_child(Kit.label("Difficulty: %s — %s" % [diff.capitalize(), DIFFICULTY_HELP.get(diff, "")], "SmallLabel"))
+	if e.get("source") == "generated":
+		var made := Kit.label("Generated here  ·  seed %d  ·  %d residents  ·  %d days" % [e["seed"], e["residents"],
+				e["days"]], "SmallLabel")
+		made.name = "Generated_" + e["case_id"]
+		v.add_child(made)
 	var status := _status_for(e["case_id"])
 	v.add_child(Kit.label(status, "AccentLabel" if status != "Not started" else "SmallLabel"))
 	var buttons := Kit.hbox()
@@ -256,6 +273,18 @@ func _case_card(e: Dictionary) -> Control:
 	v.add_child(buttons)
 	card.add_child(v)
 	return card
+
+
+func difficulty_help(diff: String) -> String:
+	return String(DIFFICULTY_HELP.get(diff, ""))
+
+
+# =========================================================================== generate mystery
+func show_generate() -> void:
+	## A dedicated operation: no investigation stays open while a town is simulated.
+	persist()
+	engine = null
+	_set_screen(GenerateScreen.new(self, generate_settings), "generate")
 
 
 # =========================================================================== load case

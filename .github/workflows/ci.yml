@@ -157,7 +157,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          grep -E "simulated |sim-vs-python|theft-vs-python|crime-vs-python|whole months|GOLDEN|^== test_(sim|memory|crime|violence|grocery|extraction)|extracted |provenance checked|candidates: |testimony: |traces: |undiscovered incidents|EXAMPLE|cases-vs-python|^== test_generation|GENERATED|generated |YIELD|PLAYABLE|QUALITY|CASE GOLDEN|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
+          grep -E "simulated |sim-vs-python|theft-vs-python|crime-vs-python|whole months|GOLDEN|^== test_(sim|memory|crime|violence|grocery|extraction)|extracted |provenance checked|candidates: |testimony: |traces: |undiscovered incidents|EXAMPLE|cases-vs-python|^== test_generation|GENERATED|generated |YIELD|PLAYABLE|QUALITY|CASE GOLDEN|^== test_generate_ui|GENERATE UI|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
 
   screens:
     name: Godot game - screenshots and web build (Linux)
