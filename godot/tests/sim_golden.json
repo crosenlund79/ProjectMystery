@@ -1,0 +1,6 @@
+{
+ "_how": "Event-log digests of three pinned runs (tests/test_sim.gd GOLDEN_RUNS), first produced by the Windows CI run of the tests. The Windows tests and the Linux demo (tests/run_sim.gd --golden) must both reproduce them: the same seed gives the same history on every machine. A deliberate change to the simulation's rules changes them; update them in the same commit.",
+ "seed 21, tension, 14 days, 10 residents": "67c424c622d232223550360eac32093d46f64577a4ff8932f107ce74209a9663",
+ "seed 5, crisis, 14 days, 12 residents": "10552000d66241b3d977d05c6975e22d75a22cd05e0152f28e7050fe43f33710",
+ "seed 7, normal, 14 days, 10 residents": "1ac5ecc1f2f119f143a390d9fd6d466cc75f3094c60423fac22420a86a56f032"
+}

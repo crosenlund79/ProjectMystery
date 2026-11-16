@@ -42,3 +42,67 @@ digests produced on Windows and Linux.
 
 Python's random numbers are not reproduced: the two simulations follow the same rules with different random
 draws, so they are compared by their statistics, not event by event.
+
+## Running it
+
+```bash
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal --out=sim-demo
+```
+
+It prints the town and its people, the first day hour by hour, a line per day, everyone's state at the end,
+the integrity checks and the event-log digest, and writes the whole history as JSON (`--golden` also checks
+the pinned digests). CI runs it on Linux and uploads the result as the `simulation-demo` artifact.
+
+```gdscript
+var sim = preload("res://scripts/sim/simulation.gd").new({"seed": 7, "days": 30, "profile": "tension"}).run()
+for ev in sim.events.events:
+    print(ev["time"], " ", ev["summary"])
+```
+
+## How it is verified
+
+`godot/tests/test_sim.gd`, part of the Godot test run in CI:
+
+- **Reproducible.** The same seed and settings give the same event log, money, whereabouts and debts; a run
+  stopped after three days and continued is identical to one run straight through; another seed, season or
+  town size gives another history. Three histories are pinned by digest (`tests/sim_golden.json`) and
+  reproduced on Windows (the tests) and Linux (the demo).
+- **Integrity**, on 12 runs of 30 days (4 seasons, 3 seeds): every transfer replayed from the starting
+  balances ends exactly at the final balances and never goes below zero; cash and food are conserved apart
+  from what enters from or leaves to the outside world; every till, tin and pantry holds what its owners
+  expect; every event is in time order, at a real place, with real people, after its causes; every walk
+  follows the map; everyone's whereabouts are continuous; needs stay within 0-100; nobody sleeps away from
+  home; every settled debt has its repayment.
+- **Daily life.** Everyone eats; everyone with a wage is paid; shops and the mill stay shut on Sundays;
+  people move, shop, drink, deposit savings, talk and pay rent.
+- **Compared with Python.** `tools/sim_reference.py` runs the Python simulation with its crime layer off (40
+  runs) and measures it exactly as `sim_check.gd` measures the Godot one: 20 kinds of event per resident
+  per day, where people spend their hours, sleep, needs, money and open debts. The routine statistics must
+  match within tolerance; the rest are reported.
+
+## Known differences from Python
+
+From CI run 26 (Godot: 3 seeds per season; Python: 10). All are within the test tolerance.
+
+| Difference | Godot | Python | Why |
+| --- | --- | --- | --- |
+| Help given to someone struggling (per resident per day) | 0.000-0.003 | 0.006-0.011 | Only the person who refused a loan or credit knows of the hardship; in Python, gossip spreads it. |
+| Loans granted (tension season) | 0.040 | 0.019 | Python's lenders hold back when they have heard of the borrower's other debts (memory). |
+| Repayments | 0.026-0.059 | 0.033-0.040 | Follows from the loans. |
+| Meals in the crisis season | 1.89 | 1.51 | Python's crisis runs vary widely (hunger standard deviation 18), and its lenders refuse more for the reason above. |
+| Drinks in the scarcity season | 1.50 | 1.00 | Within the spread of the Python runs (standard deviation 0.36); worth watching. |
+| Chats | every chat is logged | only chats that pass on gossip are logged | No gossip yet. The comparison counts every chat on both sides: 1.7-2.2 against 1.9-2.0 a day. |
+| An argument that would turn violent | the argument is logged, the fight is not | a fight (assault), with injuries | Crime layer. Counted as `escalations_deferred`. |
+| Confronting someone over a suspicion | never | sometimes | Needs memory (suspicions are inferred beliefs). |
+| Ledger mistakes | none | 1.5% x (1 - the clerk's diligence) of sales, about 1 in 130 | Incident generation (a later pilot). |
+
+Some of the comparison numbers (CI run 26):
+
+| Season | Godot: asleep / home / work / meals / wages | Python: asleep / home / work / meals / wages |
+| --- | --- | --- |
+| normal | 0.345 / 0.614 / 0.301 / 1.920 / 0.597 | 0.344 / 0.623 / 0.300 / 1.920 / 0.587 |
+| scarcity | 0.343 / 0.591 / 0.300 / 1.864 / 0.590 | 0.345 / 0.618 / 0.298 / 1.896 / 0.585 |
+| crisis | 0.348 / 0.641 / 0.272 / 1.888 / 0.491 | 0.344 / 0.602 / 0.261 / 1.510 / 0.431 |
+| tension | 0.346 / 0.571 / 0.300 / 1.904 / 0.584 | 0.344 / 0.559 / 0.300 / 1.868 / 0.582 |
+
+Speed: 30 simulated days take 0.55-0.78 s on the Windows CI runner and 14 days 0.23 s on Linux.

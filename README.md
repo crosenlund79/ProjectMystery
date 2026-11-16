@@ -70,6 +70,14 @@ together, how cases travel between them ([`docs/case-format.md`](docs/case-forma
 kept identical ([`docs/investigation-rules.md`](docs/investigation-rules.md)), and the plan for moving the
 simulation itself into Godot.
 
+The town simulation is moving into Godot as well. Pilot 1, residents living in a town with no Python at all,
+is in `godot/scripts/sim/`; [`docs/godot-simulation-migration.md`](docs/godot-simulation-migration.md) has
+the module map, the boundaries and the test results. To watch a town live for two weeks, headless:
+
+```bash
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal --out=sim-demo
+```
+
 ## The Python laboratory
 
 The laboratory is pure Python 3.10+, with no dependencies. It works on Windows, macOS and Linux. It runs the
@@ -304,7 +312,7 @@ mystery/
 godot/          the Godot 4.3 game (see docs/godot-migration.md)
   scripts/core/ case loading, investigation rules, verdict, saves (no UI)
   scripts/ui/   menus, investigation screen, timeline, reveal, theme
-  scripts/sim/  reserved for the in-engine simulation
+  scripts/sim/  the native town simulation (pilot 1: residents, routines, money, relationships)
   cases/        the bundled case library; tests/  Godot tests and parity fixtures
 Play-Mystery.cmd, Mystery-Lab.cmd   double-click launchers for Windows (Python laboratory and text game)
 tools/          find-python.cmd (shared by the launchers); wine/ launcher test harness
