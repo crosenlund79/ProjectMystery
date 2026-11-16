@@ -36,6 +36,10 @@ COMPARED_KINDS = ["move", "meal", "pub_meal", "drink", "purchase", "credit", "cr
                   "rent_paid", "rent_missed", "loan", "loan_refused", "repay", "help", "reconcile", "argument",
                   "debt_overdue", "deposit", "withdraw", "chat"]
 PLACES = ["home", "work", "pub", "square", "road", "elsewhere"]
+MEMORY_KINDS = ["presence", "sighting", "intoxicated", "noise", "debt", "refusal", "hardship", "argument",
+                "grudge", "rent_missed", "loan", "help", "reconcile", "purchase", "laid_off", "suspect"]
+ERRORS = ["misidentified", "time_distorted", "certainty_inflated"]
+SPREAD = {"argument": ["argument"], "refusal": ["loan_refused", "credit_refused"], "rent_missed": ["rent_missed"]}
 
 
 def crime_layer_off() -> None:
@@ -99,6 +103,46 @@ def stats(sim: Simulation) -> dict:
     out["money.mean_wallet"] = wallets / people
     out["money.town_cash"] = float(wallets + sum(c.cash for c in sim.world.containers.values()))
     out["money.open_debts"] = float(sum(1 for d in sim.world.debts if d.settled is None))
+    out.update(memory_stats(sim, counts, people * days))
+    return out
+
+
+def involved(rid: str, ev) -> bool:
+    return rid in ev.actors or rid in ev.targets or any(isinstance(v, str) and v == rid for v in ev.data.values())
+
+
+def root(sim, b):
+    seen = 0
+    while b.via is not None and b.via in sim.beliefs and seen < 50:
+        b = sim.beliefs[b.via]
+        seen += 1
+    return b
+
+
+def memory_stats(sim, counts: dict, per: float) -> dict:
+    """The same numbers as memory_stats() in godot/scripts/sim/sim_check.gd. Undefined values are -1."""
+    out = {}
+    beliefs = list(sim.beliefs.values())
+    for src in ("self", "saw", "heard", "told", "inferred"):
+        out[f"memory.belief_{src}"] = sum(1 for b in beliefs if b.source == src) / per
+    for k in MEMORY_KINDS:
+        out[f"memory.kind_{k}"] = sum(1 for b in beliefs if b.claim.kind == k) / per
+    for e in ERRORS:
+        out[f"memory.error_{e}"] = sum(1 for b in beliefs if b.error == e) / per
+    out["memory.gossip_chats"] = sum(1 for ev in sim.log.events if ev.kind == "chat") / per
+    out["memory.gossip_transfers"] = sim.stats["gossip_transfers"] / per
+    out["memory.suspicions"] = sim.stats["suspicions"] / per
+    knowers: dict[str, set] = {}
+    for b in beliefs:
+        r = root(sim, b)
+        if r.event:
+            knowers.setdefault(r.event, set()).add(b.holder)
+    for name, kinds in SPREAD.items():
+        evs = [ev for ev in sim.log.events if ev.kind in kinds]
+        total = sum(1 for ev in evs for h in knowers.get(ev.id, ()) if not involved(h, ev))
+        out[f"memory.knowers_{name}"] = total / len(evs) if evs else -1.0
+    lent, refused = counts.get("loan", 0), counts.get("loan_refused", 0)
+    out["memory.loan_acceptance"] = lent / (lent + refused) if lent + refused else -1.0
     return out
 
 
@@ -115,9 +159,12 @@ def reference() -> dict:
             runs.append(stats(sim))
             deferred += sim.stats["escalations_deferred"]
         keys = sorted(runs[0])
+
+        def defined(k):  # -1 marks a value a run cannot have (no arguments, no loans asked for)
+            return [r[k] for r in runs if r[k] >= 0] or [-1.0]
         result["profiles"][profile] = {
-            "mean": {k: round(statistics.fmean(r[k] for r in runs), 5) for k in keys},
-            "sd": {k: round(statistics.pstdev([r[k] for r in runs]), 5) for k in keys},
+            "mean": {k: round(statistics.fmean(defined(k)), 5) for k in keys},
+            "sd": {k: round(statistics.pstdev(defined(k)), 5) for k in keys},
             "escalations_deferred_per_run": round(deferred / len(SEEDS), 2),
         }
     return result

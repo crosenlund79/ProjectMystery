@@ -39,9 +39,12 @@ static func profile(name: String) -> Dictionary:
 
 
 static func normalize(cfg: Dictionary) -> Dictionary:
-	## {"seed": int, "days": 60, "profile": "normal", "residents": 10}, defaults filled in.
+	## {"seed": int, "days": 60, "profile": "normal", "residents": 10, "memory": true}, defaults filled in.
+	## memory: residents perceive, remember and gossip (Pilot 2). false runs Pilot 1's town exactly, as it was
+	## before memory existed (its pinned histories still hold).
 	return {"seed": int(cfg.get("seed", 1)), "days": int(cfg.get("days", 60)),
-			"profile": String(cfg.get("profile", "normal")), "residents": int(cfg.get("residents", 10))}
+			"profile": String(cfg.get("profile", "normal")), "residents": int(cfg.get("residents", 10)),
+			"memory": bool(cfg.get("memory", true))}
 
 
 static func problem(cfg: Dictionary) -> String:

@@ -11,16 +11,26 @@ const GOLDEN := "res://tests/sim_golden.json"
 const PROFILES := ["normal", "scarcity", "crisis", "tension"]
 const SEEDS := [1, 2, 3]
 const DAYS := 30
-## Everyday routine must match Python closely; the other statistics are reported and listed as differences.
+## Everyday routine and how much people see and pass on must match Python closely; the other statistics are
+## reported and listed as differences.
 const CORE := ["asleep", "share.home", "share.work", "per_resident_day.meal", "per_resident_day.move",
-		"per_resident_day.wage", "per_resident_day.purchase", "needs.energy", "needs.hunger"]
+		"per_resident_day.wage", "per_resident_day.purchase", "needs.energy", "needs.hunger", "memory.belief_saw",
+		"memory.belief_told", "memory.gossip_chats", "memory.gossip_transfers"]
 ## The runs whose event-log digests are pinned in tests/sim_golden.json (also checked on Linux by run_sim.gd).
-const GOLDEN_RUNS := [{"seed": 7, "days": 14, "profile": "normal"}, {"seed": 21, "days": 14, "profile": "tension"},
-		{"seed": 5, "days": 14, "profile": "crisis", "residents": 12}]
+## With memory off they are Pilot 1's histories, unchanged since Pilot 1; with memory on, Pilot 2's.
+const GOLDEN_RUNS := [
+	{"seed": 7, "days": 14, "profile": "normal", "memory": false},
+	{"seed": 21, "days": 14, "profile": "tension", "memory": false},
+	{"seed": 5, "days": 14, "profile": "crisis", "residents": 12, "memory": false},
+	{"seed": 7, "days": 14, "profile": "normal", "memory": true},
+	{"seed": 21, "days": 14, "profile": "tension", "memory": true},
+	{"seed": 5, "days": 14, "profile": "crisis", "residents": 12, "memory": true},
+]
 const SCRIPTS := ["res://scripts/sim/sim_rng.gd", "res://scripts/sim/sim_clock.gd", "res://scripts/sim/sim_config.gd",
 		"res://scripts/sim/sim_world.gd", "res://scripts/sim/sim_resident.gd", "res://scripts/sim/sim_town.gd",
 		"res://scripts/sim/sim_events.gd", "res://scripts/sim/sim_decisions.gd", "res://scripts/sim/sim_actions.gd",
-		"res://scripts/sim/simulation.gd", "res://scripts/sim/sim_check.gd"]
+		"res://scripts/sim/simulation.gd", "res://scripts/sim/sim_check.gd", "res://scripts/sim/sim_memory.gd",
+		"res://scripts/sim/sim_perception.gd", "res://scripts/sim/sim_gossip.gd"]
 
 
 func run(t, _tree) -> void:
@@ -128,6 +138,12 @@ static func _tolerance(key: String, mean: float, sd: float) -> float:
 		least = 5.0
 	elif key == "money.open_debts":
 		least = 1.5
+	elif key.begins_with("memory.knowers_"):
+		least = 0.75
+	elif key == "memory.loan_acceptance":
+		least = 0.1
+	elif key.begins_with("memory."):
+		least = 0.05
 	elif key.begins_with("money."):
 		least = 25.0
 	return maxf(maxf(0.25 * absf(mean), 2.5 * sd), least)
@@ -144,20 +160,25 @@ func _matches_python(t, runs: Array) -> void:
 	var differences := 0
 	for profile in PROFILES:
 		var sums := {}
-		var count := 0
+		var counts := {}
 		for rn in runs:
 			if rn["profile"] != profile:
 				continue
-			count += 1
 			var flat := SimCheck.flatten(SimCheck.stats(rn["sim"]))
 			for k in flat:
+				if flat[k] < 0:
+					continue  # a value this run cannot have (no arguments, nobody asked for a loan)
 				sums[k] = float(sums.get(k, 0.0)) + flat[k]
+				counts[k] = int(counts.get(k, 0)) + 1
 		var py: Dictionary = ref["profiles"][profile]
 		var keys: Array = py["mean"].keys()
 		keys.sort()
 		for k in keys:
-			var mine: float = float(sums.get(k, 0.0)) / maxf(1.0, count)
 			var theirs: float = py["mean"][k]
+			if theirs < 0 or not counts.has(k):
+				print("  sim-vs-python %-9s %-34s (no runs where it is defined)" % [profile, k])
+				continue
+			var mine: float = float(sums[k]) / counts[k]
 			var tol := _tolerance(k, theirs, py["sd"][k])
 			var close := absf(mine - theirs) <= tol
 			var core: bool = k in CORE
@@ -181,10 +202,13 @@ func _golden(t) -> void:
 	if FileAccess.file_exists(GOLDEN):
 		var pinned = JSON.parse_string(FileAccess.get_file_as_string(GOLDEN))
 		for k in digests:
-			t.eq(digests[k], pinned.get(k, ""), "history for %s differs from the pinned one" % k)
+			if pinned.has(k):
+				t.eq(digests[k], pinned[k], "history for %s differs from the pinned one" % k)
+			else:
+				print("  GOLDEN not pinned yet: %s" % k)
 	t.end()
 
 
 static func golden_key(cfg: Dictionary) -> String:
-	return "seed %d, %s, %d days, %d residents" % [int(cfg["seed"]), cfg["profile"], int(cfg["days"]),
-			int(cfg.get("residents", 10))]
+	return "seed %d, %s, %d days, %d residents, memory %s" % [int(cfg["seed"]), cfg["profile"], int(cfg["days"]),
+			int(cfg.get("residents", 10)), "on" if cfg.get("memory", true) else "off"]

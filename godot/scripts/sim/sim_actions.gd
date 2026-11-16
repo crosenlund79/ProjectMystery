@@ -3,13 +3,19 @@
 ## confrontations, chats, and closing time with its wages and takings. Every change of money or food is a
 ## transfer tied to an event, and every till, tin and pantry keeps the amount its owners expect.
 ##
-## Not here yet (later pilots): stealing, fights and injuries, falls and collisions, the clinic and repairs,
-## noticing and remembering things, gossip, ledger mistakes.
+## With memory on, the people involved know what they did, witnesses see or hear it (scripts/sim/sim_perception.gd)
+## and chats carry gossip (scripts/sim/sim_gossip.gd).
+##
+## Not here yet (Pilot 3): stealing, fights and injuries, falls and collisions, the clinic and repairs, ledger
+## mistakes.
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
 const Config = preload("res://scripts/sim/sim_config.gd")
 const Decisions = preload("res://scripts/sim/sim_decisions.gd")
+const Memory = preload("res://scripts/sim/sim_memory.gd")
+const Perception = preload("res://scripts/sim/sim_perception.gd")
+const Gossip = preload("res://scripts/sim/sim_gossip.gd")
 
 const DAY := 1440
 
@@ -167,6 +173,9 @@ static func shop(sim, r, ta: int) -> void:
 		pantry["expected_food"] += units
 		sim.world.record("ledger", ta, "%s sale to %s: %d units, %d cr" % [SimClock.fmt(ta), r.full_name(), units, cost],
 				ev["id"])
+		if sim.memory_on:
+			sim.add_belief(r.id, Memory.claim("purchase", {"subject": r.id, "location": "grocery", "start": ta,
+					"amount": cost, "detail": "%d units" % units}), "self", 0.95, ta, {"event": ev["id"]})
 	if units < want and units < size * 3:
 		ask_credit(sim, r, staff, want - units, ta)
 
@@ -204,13 +213,27 @@ static func ask_credit(sim, r, staff: Array, need: int, ta: int) -> void:
 		sim.world.add_debt(r.id, grocer.id, amount, ta + 7 * DAY, ta, ev["id"], "credit")
 		sim.world.record("ledger", ta + 2, "%s on credit to %s: %d units (%d cr owed)" % [SimClock.fmt(ta), r.full_name(),
 				units, amount], ev["id"])
+		if sim.memory_on:
+			var c := Memory.claim("debt", {"subject": r.id, "other": grocer.id, "amount": amount, "detail": "credit"})
+			for p_ in [r.id, grocer.id]:
+				sim.add_belief(p_, c, "self", 1.0, ta + 2, {"event": ev["id"]})
+			Perception.broadcast(sim, ev, c)
 	else:
 		var ev: Dictionary = sim.emit("credit_refused", "grocery", [grocer.id], {"targets": [r.id], "audibility": 1,
 				"time": ta + 2, "summary": "%s refuses %s credit." % [grocer.first, r.first]})
 		sim.add_pressure(r, ev, 8)
 		var mine: Dictionary = r.r(grocer.id)
 		mine["resentment"] = clampf(mine["resentment"] + 0.06, 0.0, 1.0)
-		sim.know_hardship(grocer.id, r.id, ta + 2)
+		if sim.memory_on:
+			var c := Memory.claim("refusal", {"subject": grocer.id, "other": r.id, "start": ta,
+					"detail": "credit at the grocery"})
+			sim.add_belief(r.id, c, "self", 1.0, ta + 2, {"event": ev["id"]})
+			sim.add_belief(grocer.id, c, "self", 1.0, ta + 2, {"event": ev["id"]})
+			sim.add_belief(grocer.id, Memory.claim("hardship", {"subject": r.id, "start": ta,
+					"detail": "cannot pay for food"}), "self", 0.9, ta + 2, {"event": ev["id"]})
+			Perception.broadcast(sim, ev, c)
+		else:
+			sim.know_hardship(grocer.id, r.id, ta + 2)
 
 
 static func close_business(sim, place: String, tm: int) -> void:
@@ -339,16 +362,18 @@ static func ask_loan(sim, r, x: String, ta: int) -> void:
 	r.cooldowns["loan:" + x] = ta + 5 * DAY
 	var amount := int(clampf(sim.shortfall(r, ta) + 10, 20, 100))
 	amount = mini(amount, maxi(0, lender.cash - 30))
-	var rel: Dictionary = lender.r(r.id)
-	var p: float = (0.15 + 0.45 * lender.traits["empathy"] + 0.35 * rel["trust"] + 0.25 * rel["affection"]
-			- 0.7 * rel["resentment"] - 0.3 * lender.traits["caution"])
-	# (Python also lowers p for every other debt the lender has heard of; hearing things needs memory.)
+	var p := loan_chance(sim, r, x)
 	if amount >= 20 and sim.rng.random() < p:
 		var ev: Dictionary = sim.emit("loan", here, [x], {"targets": [r.id], "data": {"amount": amount},
 				"intent": "lawful", "audibility": 1, "time": ta,
 				"summary": "%s lends %s %d crowns." % [lender.first, r.first, amount]})
 		sim.transfer("cash", "wallet:" + x, "wallet:" + r.id, amount, ev["id"], ta)
 		sim.world.add_debt(r.id, x, amount, ta + 7 * DAY, ta, ev["id"])
+		if sim.memory_on:
+			var c := Memory.claim("debt", {"subject": r.id, "other": x, "amount": amount, "start": ta, "detail": "loan"})
+			for p_ in [r.id, x]:
+				sim.add_belief(p_, c, "self", 1.0, ta, {"event": ev["id"]})
+			Perception.broadcast(sim, ev, Memory.claim("loan", {"subject": r.id, "other": x, "location": here, "start": ta}))
 		var mine: Dictionary = r.r(x)
 		mine["trust"] = clampf(mine["trust"] + 0.05, 0.0, 1.0)
 		mine["affection"] = clampf(mine["affection"] + 0.05, 0.0, 1.0)
@@ -359,7 +384,39 @@ static func ask_loan(sim, r, x: String, ta: int) -> void:
 		sim.add_pressure(r, ev, 8)
 		var mine: Dictionary = r.r(x)
 		mine["resentment"] = clampf(mine["resentment"] + 0.08 + 0.12 * r.traits["stubbornness"], 0.0, 1.0)
-		sim.know_hardship(x, r.id, ta)
+		if sim.memory_on:
+			var c := Memory.claim("refusal", {"subject": x, "other": r.id, "start": ta, "detail": "a loan"})
+			sim.add_belief(r.id, c, "self", 1.0, ta, {"event": ev["id"]})
+			sim.add_belief(x, c, "self", 1.0, ta, {"event": ev["id"]})
+			sim.add_belief(x, Memory.claim("hardship", {"subject": r.id, "start": ta, "detail": "asking around for money"}),
+					"self", 0.9, ta, {"event": ev["id"]})
+			Perception.broadcast(sim, ev, c)
+		else:
+			sim.know_hardship(x, r.id, ta)
+
+
+static func loan_chance(sim, r, x: String) -> float:
+	## How likely ``x`` is to lend to ``r``: kindness, trust and fondness for, resentment, caution, and (with
+	## memory) every other debt of ``r`` that ``x`` knows of and hasn't heard was repaid.
+	var lender = sim.residents[x]
+	var rel: Dictionary = lender.r(r.id)
+	var p: float = (0.15 + 0.45 * lender.traits["empathy"] + 0.35 * rel["trust"] + 0.25 * rel["affection"]
+			- 0.7 * rel["resentment"] - 0.3 * lender.traits["caution"])
+	if sim.memory_on:
+		var owed := {}
+		var repaid := {}
+		for b in sim.memory[x].of_kind(["debt"]):
+			var c: Dictionary = b["claim"]
+			if c["subject"] == r.id:
+				owed[c["other"]] = true
+				if c["detail"] == "repaid":
+					repaid[c["other"]] = true
+		var unpaid := 0
+		for o in owed:
+			if not repaid.has(o):
+				unpaid += 1
+		p -= 0.25 * unpaid
+	return p
 
 
 static func repay(sim, r, plan: Dictionary, ta: int) -> void:
@@ -378,6 +435,12 @@ static func settle_debt(sim, r, debt: Dictionary, t: int, here: String) -> void:
 	sim.transfer("cash", "wallet:" + r.id, "wallet:" + debt["creditor"], debt["amount"], ev["id"], t)
 	debt["settled"] = t
 	debt["settled_event"] = ev["id"]
+	if sim.memory_on:
+		var c := Memory.claim("debt", {"subject": r.id, "other": debt["creditor"], "amount": debt["amount"], "start": t,
+				"detail": "repaid"})
+		for p_ in [r.id, debt["creditor"]]:
+			sim.add_belief(p_, c, "self", 1.0, t, {"event": ev["id"]})
+		Perception.broadcast(sim, ev, c)
 	var cred_rel: Dictionary = sim.residents[debt["creditor"]].r(r.id)
 	cred_rel["resentment"] = clampf(cred_rel["resentment"] - 0.15, 0.0, 1.0)
 
@@ -391,6 +454,10 @@ static func help_out(sim, r, x: String, ta: int) -> void:
 			"intent": "lawful", "audibility": 1, "time": ta,
 			"summary": "%s gives %s %d crowns to tide them over." % [r.first, sim.n(x), amount]})
 	sim.transfer("cash", "wallet:" + r.id, "wallet:" + x, amount, ev["id"], ta)
+	if sim.memory_on:
+		var c := Memory.claim("help", {"subject": r.id, "other": x, "start": ta, "amount": amount})
+		for p_ in [r.id, x]:
+			sim.add_belief(p_, c, "self", 1.0, ta, {"event": ev["id"]})
 	var theirs: Dictionary = sim.residents[x].r(r.id)
 	theirs["affection"] = clampf(theirs["affection"] + 0.1, 0.0, 1.0)
 	theirs["trust"] = clampf(theirs["trust"] + 0.08, 0.0, 1.0)
@@ -402,13 +469,18 @@ static func reconcile(sim, r, x: String, ta: int) -> void:
 	var p: float = (0.4 + 0.4 * target.traits["empathy"] - 0.4 * target.traits["stubbornness"]
 			- 0.3 * target.r(r.id)["resentment"])
 	var accepted: bool = sim.rng.random() < p
-	sim.emit("reconcile", sim.loc(r.id), [r.id], {"targets": [x], "data": {"accepted": accepted}, "intent": "lawful",
-			"audibility": 1, "time": ta, "summary": "%s tries to make peace with %s (%s)." % [r.first, target.first,
-			"accepted" if accepted else "rebuffed"]})
+	var ev: Dictionary = sim.emit("reconcile", sim.loc(r.id), [r.id], {"targets": [x], "data": {"accepted": accepted},
+			"intent": "lawful", "audibility": 1, "time": ta, "summary": "%s tries to make peace with %s (%s)." % [r.first,
+			target.first, "accepted" if accepted else "rebuffed"]})
 	if accepted:
 		r.r(x)["resentment"] = snappedf(r.r(x)["resentment"] * 0.5, 0.001)
 		target.r(r.id)["resentment"] = snappedf(target.r(r.id)["resentment"] * 0.5, 0.001)
 		sim.bump("deescalation:reconcile")
+	if sim.memory_on:
+		var c := Memory.claim("reconcile", {"subject": r.id, "other": x, "start": ta,
+				"detail": "accepted" if accepted else "rebuffed"})
+		for p_ in [r.id, x]:
+			sim.add_belief(p_, c, "self", 1.0, ta, {"event": ev["id"]})
 
 
 static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
@@ -420,16 +492,30 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 	sim.daily[pair] = ta
 	var reason: String = plan["reason"]
 	var ref: String = plan["data"].get("ref", "")
-	r.cooldowns["confront:" + x] = ta + (4 if reason in ["debt", "rent"] else 7) * DAY
+	var days := 7
+	if reason in ["debt", "rent"]:
+		days = 4
+	elif reason == "suspicion":
+		days = 5
+	r.cooldowns["confront:" + x] = ta + days * DAY
 	var causes := []
 	var debt := {}
 	var topic := ""
+	var suspicion := {}
 	if reason == "debt" or reason == "rent":
 		debt = sim.world.debt(ref)
 		if debt.is_empty() or debt["settled"] >= 0:
 			return
 		topic = "money owed (%d crowns%s)" % [debt["amount"], " of rent" if debt["kind"] == "rent" else ""]
 		causes = [debt["overdue_event"] if debt["overdue_event"] != "" else debt["origin_event"]]
+	elif reason == "suspicion":
+		# an accusation, from what the accuser believes (a suspicion they inferred or were told)
+		suspicion = sim.beliefs[ref]
+		topic = "an accusation over " + suspicion["claim"]["detail"]
+		for pid in suspicion["premises"]:
+			var premise_event = sim.beliefs[pid]["event"]
+			if premise_event and causes.size() < 3:
+				causes.append(premise_event)
 	else:
 		topic = "an old grievance"
 		for old in sim.events.events.slice(0, 20):
@@ -440,6 +526,22 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 			"causes": causes, "audibility": 2, "notable": true, "time": ta,
 			"summary": "%s confronts %s about %s." % [r.first, target.first, topic]})
 	sim.bump("confrontations")
+	if sim.memory_on:
+		var seen := Memory.claim("argument", {"subject": r.id, "other": x, "location": here, "start": ta, "detail": topic})
+		var heard_detail := "raised voices" + (", something about money" if reason in ["debt", "rent"] else "")
+		Perception.broadcast(sim, ev, seen, Memory.claim("noise", {"location": here, "start": ta, "detail": heard_detail}),
+				r.id)
+		for p_ in [r.id, x]:
+			sim.add_belief(p_, seen, "self", 1.0, ta, {"event": ev["id"]})
+		if not suspicion.is_empty():
+			# now the accused knows someone suspects them (told to their face); nobody is guilty of anything
+			# before Pilot 3, so they resent it
+			var s: Dictionary = suspicion["claim"]
+			sim.add_belief(x, Memory.claim("suspect", {"subject": x, "location": s["location"], "start": s["start"],
+					"end": s["end"], "detail": s["detail"]}), "told", 0.9, ta, {"event": ev["id"], "told_by": r.id,
+					"via": ref})
+			var theirs: Dictionary = target.r(r.id)
+			theirs["resentment"] = clampf(theirs["resentment"] + 0.2, 0.0, 1.0)
 	if not debt.is_empty() and target.cash >= debt["amount"]:
 		settle_debt(sim, target, debt, ta + 1, here)
 		sim.bump("deescalation:paid")
@@ -516,8 +618,24 @@ static func chat(sim, a, b, node: String, t: int) -> void:
 		x.stress = clampf(x.stress - 2, 0.0, 100.0)
 		var rel: Dictionary = x.r(y.id)
 		rel["affection"] = clampf(rel["affection"] + 0.01, 0.0, 1.0)
-	# Python logs a chat only when gossip passes in it; there is no gossip until memory is ported, so every
-	# chat is logged (shared: nothing).
-	sim.emit("chat", node, [a.id], {"targets": [b.id], "data": {"shared": []}, "intent": "lawful", "time": t,
-			"summary": "%s and %s talk." % [a.first, b.first]})
 	sim.bump("chats")
+	if not sim.memory_on:
+		# Pilot 1, before memory: every chat is logged, and nothing passes in it
+		sim.emit("chat", node, [a.id], {"targets": [b.id], "data": {"shared": []}, "intent": "lawful", "time": t,
+				"summary": "%s and %s talk." % [a.first, b.first]})
+		return
+	# As in Python, a chat is logged when something passes in it: what each of them brings up
+	var ab: Array = Gossip.pick_gossip(sim, a, b, t)
+	var ba: Array = Gossip.pick_gossip(sim, b, a, t)
+	if ab.is_empty() and ba.is_empty():
+		return
+	var shared := []
+	for item in ab + ba:
+		shared.append(item["id"])
+	var ev: Dictionary = sim.emit("chat", node, [a.id], {"targets": [b.id], "data": {"shared": shared},
+			"intent": "lawful", "time": t, "summary": "%s and %s talk." % [a.first, b.first]})
+	for belief in ab:
+		Gossip.tell(sim, a.id, b.id, belief, ev["id"], t)
+	for belief in ba:
+		Gossip.tell(sim, b.id, a.id, belief, ev["id"], t)
+	sim.bump("gossip_transfers", ab.size() + ba.size())

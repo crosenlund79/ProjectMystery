@@ -3,12 +3,16 @@
 ## best one wins, ties broken by kind, destination and person. Pressure changes priorities and acceptable
 ## risks; it never forces an outcome.
 ##
+## Decisions about people use only what the decider believes (scripts/sim/sim_memory.gd): whose hardship they
+## know of, and whom they suspect of something they have a stake in.
+##
 ## Not here yet: stealing (the crime layer), the clinic and repairs (only needed after injuries and
-## collisions), and confronting someone over a suspicion (needs memory).
+## collisions).
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
 const Config = preload("res://scripts/sim/sim_config.gd")
+const Gossip = preload("res://scripts/sim/sim_gossip.gd")
 
 const DAY := 1440
 const WEALTH_GUESS := {"mill_owner": 1.0, "grocer": 0.8, "publican": 0.8, "nurse": 0.6, "mechanic": 0.6}
@@ -148,10 +152,21 @@ static func _social_intent(sim, r, t: int, pressure: float) -> Dictionary:
 	for d in my_debts:
 		my_creditors[d["creditor"]] = true
 	var in_hardship := {}
-	var known: Dictionary = sim.known_hardship[r.id]
-	for subject in known:
-		if known[subject] >= t - 3 * DAY:
-			in_hardship[subject] = true
+	var suspicions := {}  # subject -> the strongest suspicion of them, among incidents this resident cares about
+	if sim.memory_on:
+		var mem = sim.memory[r.id]
+		for b in mem.of_kind(["suspect"], t - 4 * DAY):
+			var s = b["claim"]["subject"]
+			if s and b["confidence"] >= 0.5 and Gossip.has_stake(sim, r.id, b):
+				if not suspicions.has(s) or b["confidence"] > suspicions[s]["confidence"]:
+					suspicions[s] = b
+		for b in mem.of_kind(["hardship"], t - 3 * DAY):
+			in_hardship[b["claim"]["subject"]] = true
+	else:
+		var known: Dictionary = sim.known_hardship[r.id]
+		for subject in known:
+			if known[subject] >= t - 3 * DAY:
+				in_hardship[subject] = true
 
 	for x in sim.ids:
 		if x == r.id:
@@ -180,6 +195,10 @@ static func _social_intent(sim, r, t: int, pressure: float) -> Dictionary:
 				base = 40.0
 				reason = "rent" if owed_to_me[x]["kind"] == "rent" else "debt"
 				ref = owed_to_me[x]["id"]
+			if suspicions.has(x) and 45 * suspicions[x]["confidence"] > base:
+				base = 45 * suspicions[x]["confidence"]
+				reason = "suspicion"
+				ref = suspicions[x]["id"]
 			# an old grudge only flares up when drink meets opportunity
 			if reason == "" and rel["resentment"] >= 0.6 and r.intox >= 35 and sim.loc(x) == here:
 				base = 20.0

@@ -15,6 +15,9 @@ const Town = preload("res://scripts/sim/sim_town.gd")
 const EventLog = preload("res://scripts/sim/sim_events.gd")
 const Decisions = preload("res://scripts/sim/sim_decisions.gd")
 const Actions = preload("res://scripts/sim/sim_actions.gd")
+const Memory = preload("res://scripts/sim/sim_memory.gd")
+const Perception = preload("res://scripts/sim/sim_perception.gd")
+const Gossip = preload("res://scripts/sim/sim_gossip.gd")
 
 const DAY := 1440
 const TICK := 60
@@ -39,7 +42,11 @@ var moves := {}
 var pressure := {}
 var daily := {}
 var stats := {}
-var known_hardship := {}  # holder -> {subject: minute}: who has seen someone struggle for money
+var known_hardship := {}  # memory off only: holder -> {subject: minute}, who saw someone struggle for money
+var memory_on := true  # config "memory": perception, memory and gossip (Pilot 2)
+var memory := {}  # rid -> Memory: what each resident believes (scripts/sim/sim_memory.gd)
+var beliefs := {}  # belief id -> belief, every belief anyone ever formed
+var perceived := {}  # "rid|event id" -> "saw" or "heard": who noticed which event, and how
 var samples := {}  # hourly samples for the statistics (see _sample)
 var errors := []  # broken rules: a transfer that would go negative, a container that doesn't add up, ...
 var initial_balances := {}
@@ -64,10 +71,12 @@ func _init(cfg: Dictionary) -> void:
 	ids = residents.keys()
 	ids.sort()
 	events = EventLog.new()
+	memory_on = config["memory"]
 	for rid in ids:
 		intervals[rid] = [[residents[rid].home, 0, -1]]
 		pressure[rid] = 0.0
 		known_hardship[rid] = {}
+		memory[rid] = Memory.new(rid)
 	samples = {"hours": 0, "asleep": 0, "hunger": 0.0, "energy": 0.0, "social": 0.0, "stress": 0.0, "at": {}}
 	for p in STAT_PLACES:
 		samples["at"][p] = 0
@@ -95,13 +104,24 @@ func loc(rid: String) -> String:
 
 
 func where(rid: String, minute: int) -> String:
+	## Where ``rid`` was at ``minute`` ("" before their first whereabouts). Whereabouts are contiguous and in
+	## time order, so the last one starting at or before ``minute`` is the answer if it hasn't ended.
 	var ivs: Array = intervals[rid]
-	for i in range(ivs.size() - 1, -1, -1):
-		var iv: Array = ivs[i]
-		if iv[1] <= minute and (iv[2] < 0 or minute < iv[2]):
-			return iv[0]
-		if iv[1] <= minute:
-			return ""
+	var lo := 0
+	var hi := ivs.size() - 1
+	var idx := -1
+	while lo <= hi:
+		var mid := (lo + hi) >> 1
+		if ivs[mid][1] <= minute:
+			idx = mid
+			lo = mid + 1
+		else:
+			hi = mid - 1
+	if idx < 0:
+		return ""
+	var iv: Array = ivs[idx]
+	if iv[2] < 0 or minute < iv[2]:
+		return iv[0]
 	return ""
 
 
@@ -238,14 +258,62 @@ func emit(kind: String, location: String, actors: Array, opts := {}) -> Dictiona
 
 
 func _seed_history() -> void:
+	## The town's past: old grudges and debts. The people involved know them first-hand; others may have
+	## heard about them over the years (told by one of the parties, at minute 0).
 	for g in meta["grudges"]:
-		emit("prior_grudge", "-", [g["a"]], {"targets": [g["b"]], "data": {"reason": g["reason"]}, "time": 0,
+		var ev := emit("prior_grudge", "-", [g["a"]], {"targets": [g["b"]], "data": {"reason": g["reason"]}, "time": 0,
 				"summary": "Long-standing grudge between %s and %s: %s." % [n(g["a"]), n(g["b"]), g["reason"]]})
+		if memory_on:
+			var c := Memory.claim("grudge", {"subject": g["a"], "other": g["b"], "detail": g["reason"]})
+			for holder in [g["a"], g["b"]]:
+				add_belief(holder, c, "self", 1.0, 0, {"event": ev["id"]})
+			for other in ids:
+				if not (other in [g["a"], g["b"]]) and rng.random() < 0.5:
+					add_belief(other, c, "told", 0.7, 0, {"event": ev["id"], "told_by": g["a"]})
 	for d in meta["initial_debts"]:
 		var ev := emit("prior_debt", "-", [d["debtor"]], {"targets": [d["creditor"]], "data": {"amount": d["amount"]},
 				"time": 0, "summary": "%s owes %s %d crowns (due %s)." % [n(d["debtor"]), n(d["creditor"]), d["amount"],
 				SimClock.fmt(d["due"])]})
 		world.add_debt(d["debtor"], d["creditor"], d["amount"], d["due"], 0, ev["id"])
+		if memory_on:
+			var c := Memory.claim("debt", {"subject": d["debtor"], "other": d["creditor"], "amount": d["amount"],
+					"detail": "loan"})
+			for holder in [d["debtor"], d["creditor"]]:
+				add_belief(holder, c, "self", 1.0, 0, {"event": ev["id"]})
+			for other in ids:
+				if not (other in [d["debtor"], d["creditor"]]) and rng.random() < 0.25:
+					add_belief(other, c, "told", 0.6, 0, {"event": ev["id"], "told_by": d["creditor"]})
+
+
+# ------------------------------------------------------------------- memory
+func add_belief(holder: String, c: Dictionary, source: String, confidence: float, time: int, opts := {}) -> Dictionary:
+	## The only way anyone comes to believe anything. opts: event, told_by, via, premises, error, salience.
+	## A belief they already hold from an equal or better source is kept as it is.
+	var mem = memory[holder]
+	var existing = mem.find(c)
+	if existing != null and Memory.SOURCE_RANK[existing["source"]] >= Memory.SOURCE_RANK[source]:
+		return existing
+	var b := {"id": "B%06d" % (beliefs.size() + 1), "holder": holder, "claim": c, "source": source, "acquired": time,
+			"confidence": snappedf(clampf(confidence, 0.0, 1.0), 0.001),
+			"salience": opts.get("salience", Memory.SALIENCE.get(c["kind"], 0.3)), "event": opts.get("event"),
+			"told_by": opts.get("told_by"), "via": opts.get("via"), "premises": Array(opts.get("premises", [])).duplicate(),
+			"error": opts.get("error"), "told_to": []}
+	beliefs[b["id"]] = b
+	mem.add(b)
+	bump("belief:" + source)
+	return b
+
+
+func overlap_start(rid: String, node: String, s: int, e: int) -> int:
+	## First minute in [s, e) that ``rid`` is at ``node``, or -1.
+	var best := -1
+	var ivs: Array = intervals[rid]
+	for i in range(ivs.size() - 1, maxi(-1, ivs.size() - 9), -1):
+		var iv: Array = ivs[i]
+		if iv[0] == node and iv[1] < e and (iv[2] < 0 or iv[2] > s):
+			var tt: int = maxi(iv[1], s)
+			best = tt if best < 0 else mini(best, tt)
+	return best
 
 
 # ---------------------------------------------------------------- pressure
@@ -356,6 +424,11 @@ func _start_of_tick(tt: int) -> void:
 					"amount": d["amount"], "debt": d["id"]}, "causes": [d["origin_event"]], "time": tt,
 					"summary": "%s's debt of %d to %s is overdue." % [n(d["debtor"]), d["amount"], n(d["creditor"])]})
 			d["overdue_event"] = ev["id"]
+			if memory_on:
+				var c := Memory.claim("debt", {"subject": d["debtor"], "other": d["creditor"], "amount": d["amount"],
+						"detail": "overdue"})
+				add_belief(d["debtor"], c, "self", 1.0, tt, {"event": ev["id"]})
+				add_belief(d["creditor"], c, "self", 1.0, tt, {"event": ev["id"]})
 			add_pressure(debtor, ev)
 			var cred_rel: Dictionary = residents[d["creditor"]].r(d["debtor"])
 			cred_rel["resentment"] = clampf(cred_rel["resentment"] + 0.15, 0.0, 1.0)
@@ -420,6 +493,11 @@ func _collect_rent(tt: int) -> void:
 					"time": tt, "notable": true, "summary": "%s cannot pay the rent owed to %s." % [head.first,
 					lord.first]})
 			world.add_debt(head.id, lord.id, Config.RENT, tt + 7 * DAY, tt, ev["id"], "rent")
+			if memory_on:
+				var c := Memory.claim("rent_missed", {"subject": head.id, "other": lord.id, "amount": Config.RENT,
+						"start": tt})
+				add_belief(head.id, c, "self", 1.0, tt, {"event": ev["id"]})
+				add_belief(lord.id, c, "self", 1.0, tt, {"event": ev["id"]})
 			add_pressure(head, ev, 12)
 			var rel: Dictionary = lord.r(head.id)
 			rel["resentment"] = clampf(rel["resentment"] + 0.1, 0.0, 1.0)
@@ -480,6 +558,10 @@ func _layoffs(tt: int) -> void:
 		r.shift = []
 		r.occupation = "out of work (laid off from the mill)"
 		world.locations["mill"]["staff"].erase(r.id)
+		if memory_on:
+			var c := Memory.claim("laid_off", {"subject": r.id, "other": owner.id, "start": tt})
+			add_belief(r.id, c, "self", 1.0, tt, {"event": ev["id"]})
+			add_belief(owner.id, c, "self", 1.0, tt, {"event": ev["id"]})
 		var rel: Dictionary = r.r(owner.id)
 		rel["resentment"] = clampf(rel["resentment"] + 0.35, 0.0, 1.0)
 		add_pressure(r, ev, 20)
@@ -579,6 +661,12 @@ func _move_phase(t0: int) -> void:
 				"summary": "%s %s from %s to %s." % [residents[rid].first, "drives" if mv["drive"] else "walks",
 				world.name_of(p[0]), world.name_of(p[-1])]})
 		mv["event"] = ev["id"]
+	if memory_on:
+		for rid in movers:
+			Perception.doorways(self, rid)
+		for rid in movers:
+			if residents[rid].alive:
+				Perception.transit_sightings(self, rid)
 
 
 # ------------------------------------------------------------------ actions
@@ -602,10 +690,16 @@ func _action_phase(t0: int) -> void:
 func _end_of_tick(t0: int) -> void:
 	var tm := t0 + 59
 	var h := SimClock.hour_of(t0)
+	if memory_on:
+		Perception.co_presence(self, tm)
 	for place in ["grocery", "pub", "mill", "clinic", "workshop"]:
 		var hours: Array = world.locations[place]["hours"]
 		if not hours.is_empty() and h == hours[1] - 1:
 			Actions.close_business(self, place, tm)
+	if memory_on and (h == 12 or h == 20):
+		for r in alive():
+			if not r.down:
+				Gossip.infer_suspicions(self, r.id, tm)
 	_sample(tm)
 
 

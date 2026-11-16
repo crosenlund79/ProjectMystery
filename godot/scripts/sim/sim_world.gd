@@ -21,6 +21,7 @@ var records := {}
 var debts := []
 var transfers := []
 var _paths := {}
+var _hops := {}
 
 
 func _init(town: String, pub: String) -> void:
@@ -71,6 +72,25 @@ func path(a: String, b: String) -> Array:
 		nodes.reverse()
 		_paths[key] = nodes
 	return _paths[key]
+
+
+func hops(a: String, b: String) -> int:
+	## Steps between two places on the map (99 if unconnected): how far a sound carries.
+	if not _hops.has(a):
+		var dist := {a: 0}
+		var queue := [a]
+		var head := 0
+		while head < queue.size():
+			var cur: String = queue[head]
+			head += 1
+			var nexts: Array = locations[cur]["adj"].keys()
+			nexts.sort()
+			for nxt in nexts:
+				if not dist.has(nxt):
+					dist[nxt] = dist[cur] + 1
+					queue.append(nxt)
+		_hops[a] = dist
+	return int(_hops[a].get(b, 99))
 
 
 func name_of(id: String) -> String:
