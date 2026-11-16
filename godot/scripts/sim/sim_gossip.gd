@@ -12,6 +12,7 @@
 extends RefCounted
 
 const Memory = preload("res://scripts/sim/sim_memory.gd")
+const Incidents = preload("res://scripts/sim/sim_incidents.gd")
 
 const DAY := 1440
 const LOYAL_KINDS := ["suspect", "sighting", "vehicle_damage", "assault", "debt", "hardship", "intoxicated", "presence"]
@@ -21,8 +22,12 @@ const OWN_TROUBLES := ["debt", "hardship", "suspect", "refusal", "rent_missed"]
 
 static func conceals(sim, speaker, b: Dictionary) -> bool:
 	var c: Dictionary = b["claim"]
-	if c["kind"] in ["theft_self", "stash", "collision_self"]:
-		return true  # (Python also hides a collision only until it is reported; there are none before Pilot 3B)
+	if c["kind"] in ["theft_self", "stash"]:
+		return true
+	if c["kind"] == "collision_self":
+		# a driver keeps a collision to themselves unless they owned up to it on the spot
+		var inc: Dictionary = Incidents.incident_for(sim, b["event"])
+		return inc.is_empty() or not inc["reported_openly"]
 	if not speaker.guilty_of.is_empty() and c["subject"] == speaker.id:
 		return true  # someone with something to hide keeps quiet about themselves
 	if (c["subject"] and c["subject"] != speaker.id and speaker.r(c["subject"])["affection"] >= 0.75

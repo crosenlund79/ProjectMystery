@@ -6,9 +6,8 @@
 ## With memory on, the people involved know what they did, witnesses see or hear it (scripts/sim/sim_perception.gd)
 ## and chats carry gossip (scripts/sim/sim_gossip.gd). With crime on, a resident may steal, a clerk may write a
 ## sale in twice, a forced door is noticed by whoever opens up, and an accused culprit may confess
-## (scripts/sim/sim_crime.gd).
-##
-## Not here yet (Pilot 3B): fights and injuries, falls and collisions, the clinic and repairs.
+## (scripts/sim/sim_crime.gd). With violence on too, an argument can turn into a fight, and the injured go to the
+## clinic and damaged vehicles to the workshop (scripts/sim/sim_violence.gd).
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
@@ -19,6 +18,7 @@ const Perception = preload("res://scripts/sim/sim_perception.gd")
 const Gossip = preload("res://scripts/sim/sim_gossip.gd")
 const Crime = preload("res://scripts/sim/sim_crime.gd")
 const Incidents = preload("res://scripts/sim/sim_incidents.gd")
+const Violence = preload("res://scripts/sim/sim_violence.gd")
 
 const DAY := 1440
 
@@ -51,6 +51,10 @@ static func perform(sim, r, plan: Dictionary, ta: int) -> void:
 				sim.daily["odd:" + r.id] = int(sim.daily.get("odd:" + r.id, 0)) + 1
 		"steal":
 			Crime.steal(sim, r, plan, ta)
+		"clinic":
+			Violence.clinic(sim, r, ta)
+		"repair":
+			Violence.repair(sim, r, ta)
 		"loan", "repay", "confront", "reconcile", "help":
 			var x: String = plan["target"]
 			if x == "" or not sim.awake_at(x, ta, sim.loc(r.id)):
@@ -148,6 +152,9 @@ static func drink(sim, r, ta: int, limit := 2) -> void:
 	r.intox = clampf(r.intox + 16 * n, 0.0, 100.0)
 	r.stress = clampf(r.stress - 6, 0.0, 100.0)
 	r.social = clampf(r.social + 8, 0.0, 100.0)
+	var drinks: Array = sim.recent_drinks[r.id]
+	drinks.append([ta, ev["id"]])
+	sim.recent_drinks[r.id] = drinks.slice(maxi(0, drinks.size() - 10))
 
 
 @warning_ignore("integer_division")
@@ -584,9 +591,18 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 			+ 0.25 * (a.traits["caution"] + b.traits["caution"]) / 2 + 0.08 * bystanders.size())
 	var p := clampf(heat - calm - 0.42, 0.0, 0.25)
 	if sim.rng.random() < p:
-		# In Python the argument turns into a fight here (an assault: the crime layer, a later pilot). The
-		# argument stays in the log, and what follows is counted rather than invented.
-		sim.bump("escalations_deferred")
+		if not sim.violence_on:
+			# Without violence (crime off, or Pilot 3A) the argument stays in the log, and the fight that would
+			# follow is counted rather than invented.
+			sim.bump("escalations_deferred")
+			return
+		# the argument turns into a fight: the one more given to it hits the other
+		var aggressor = a
+		var victim = b
+		if _aggression(b, a) > _aggression(a, b):
+			aggressor = b
+			victim = a
+		Violence.assault(sim, aggressor, victim, ev, here, ta + 2, bystanders, reason)
 		return
 	var outcome := "walked_away"
 	if not debt.is_empty():
@@ -605,6 +621,10 @@ static func confront(sim, r, x: String, plan: Dictionary, ta: int) -> void:
 			"intent": "lawful", "time": ta + 2,
 			"summary": "%s and %s part (%s)." % [r.first, target.first, outcome.replace("_", " ")]})
 	sim.bump("deescalation:" + outcome)
+
+
+static func _aggression(p, o) -> float:
+	return p.traits["impulsiveness"] + p.intox / 100.0 + p.r(o.id)["resentment"]
 
 
 # ============================================================== chats

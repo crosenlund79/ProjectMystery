@@ -2,8 +2,9 @@
 ## needs, scheduled duties (overdue debts, morning cash, rent, deliveries, layoffs), decisions, movement,
 ## actions, closing time. With memory on, residents perceive, remember and gossip (Pilot 2); with crime on,
 ## they may steal, losses are discovered at counting time, traces are left and noticed, and every incident is
-## registered (Pilot 3A). Violence and accidents are a later pilot (docs/godot-simulation-migration.md).
-## Headless: nothing here draws, plays or waits.
+## registered (Pilot 3A), and with violence (the default with crime on) there are fights, drunken falls and
+## collisions, injuries and deaths, the clinic and repairs, and people found or missed (Pilot 3B). See
+## docs/godot-simulation-migration.md. Headless: nothing here draws, plays or waits.
 ##
 ##   var sim = Simulation.new({"seed": 7, "days": 30, "profile": "normal", "residents": 10})
 ##   sim.run()
@@ -21,6 +22,7 @@ const Memory = preload("res://scripts/sim/sim_memory.gd")
 const Perception = preload("res://scripts/sim/sim_perception.gd")
 const Gossip = preload("res://scripts/sim/sim_gossip.gd")
 const Crime = preload("res://scripts/sim/sim_crime.gd")
+const Violence = preload("res://scripts/sim/sim_violence.gd")
 
 const DAY := 1440
 const TICK := 60
@@ -52,6 +54,9 @@ var beliefs := {}  # belief id -> belief, every belief anyone ever formed
 var perceived := {}  # "rid|event id" -> "saw", "heard" or "trace": who noticed which event, and how
 var crime_on := false  # config "crime": theft, financial incidents, discovery and evidence (Pilot 3A)
 var incidents := []  # the incident registry (scripts/sim/sim_incidents.gd): developer-only truth
+var violence_on := false  # config "crime" and "violence": fights, falls, collisions and what follows (Pilot 3B)
+var recent_drinks := {}  # rid -> [[minute, drink event id], ...] (the last ten): what led to a fall or a crash
+var found_bodies := []  # the dead whom someone has found
 var samples := {}  # hourly samples for the statistics (see _sample)
 var errors := []  # broken rules: a transfer that would go negative, a container that doesn't add up, ...
 var initial_balances := {}
@@ -78,11 +83,13 @@ func _init(cfg: Dictionary) -> void:
 	events = EventLog.new()
 	memory_on = config["memory"]
 	crime_on = config["crime"]
+	violence_on = crime_on and config["violence"]
 	for rid in ids:
 		intervals[rid] = [[residents[rid].home, 0, -1]]
 		pressure[rid] = 0.0
 		known_hardship[rid] = {}
 		memory[rid] = Memory.new(rid)
+		recent_drinks[rid] = []
 	samples = {"hours": 0, "asleep": 0, "hunger": 0.0, "energy": 0.0, "social": 0.0, "stress": 0.0, "at": {}}
 	for p in STAT_PLACES:
 		samples["at"][p] = 0
@@ -181,14 +188,34 @@ func present_during(rid: String, node: String, s: int, e: int) -> bool:
 	return false
 
 
-func visitors(node: String, s: int, e: int) -> Array:
+func visitors(node: String, s: int, e: int, exclude := []) -> Array:
 	## Everyone (alive, on their feet) who was at ``node`` at some point in [s, e).
 	var out := []
 	for rid in ids:
 		var r = residents[rid]
-		if r.alive and not r.down and present_during(rid, node, s, e):
+		if not (rid in exclude) and r.alive and not r.down and present_during(rid, node, s, e):
 			out.append(rid)
 	return out
+
+
+func truncate(rid: String, node: String, tt: int) -> void:
+	## Stop someone mid-journey at ``node`` (they fell, were hit, or stopped): they are there from ``tt`` on.
+	var ivs: Array = intervals[rid]
+	while ivs.size() > 1 and ivs[-1][1] >= tt:
+		ivs.pop_back()
+	if ivs[-1][0] != node:
+		ivs[-1][2] = tt
+		ivs.append([node, tt, -1])
+	else:
+		ivs[-1][2] = -1
+	if moves.has(rid):
+		var mv: Dictionary = moves[rid]
+		var path: Array = mv["path"]
+		var cut: int = path.find(node) + 1 if node in path else path.size()
+		mv["path"] = path.slice(0, cut)
+		mv["times"] = Array(mv["times"]).slice(0, cut)
+		if mv["drive"]:
+			world.vehicles[mv["vehicle"]]["location"] = node
 
 
 func on_shift(r, tt: int) -> bool:
@@ -450,6 +477,8 @@ func _update_needs(tt: int) -> void:
 			r.hunger += 5
 			r.social -= 2.5
 			r.stress += pressure[r.id] * 3 - 1
+		if r.down:
+			r.stress += 3  # lying hurt where they fell
 		if r.hunger >= 95:
 			r.stress += 2
 		r.intox = maxf(0.0, r.intox - 10)
@@ -457,6 +486,11 @@ func _update_needs(tt: int) -> void:
 		r.hunger = clampf(r.hunger, 0.0, 100.0)
 		r.social = clampf(r.social, 0.0, 100.0)
 		r.stress = clampf(r.stress, 0.0, 100.0)
+		if r.injury > 0 and r.injury_event != "":
+			# a minor injury heals in two days, a serious one in six
+			var started: int = events.by_id[r.injury_event]["time"]
+			if tt - started >= (2 if r.injury == 1 else 6) * DAY:
+				r.injury = 0
 		pressure[r.id] = money_pressure(r, tt)
 
 
@@ -712,6 +746,11 @@ func _move_phase(t0: int) -> void:
 			walkers.append(rid)
 	for rid in walkers + drivers:
 		_route(rid, plans[rid]["dest"], t0 + rng.randint(0, 15), drivers.has(rid))
+	if violence_on:
+		for rid in drivers:
+			Violence.check_collision(self, rid, t0, walkers)
+		for rid in walkers:
+			Violence.check_fall(self, rid, t0)
 	for rid in movers:
 		var mv: Dictionary = moves[rid]
 		var p: Array = mv["path"]
@@ -752,8 +791,14 @@ func _end_of_tick(t0: int) -> void:
 	var h := SimClock.hour_of(t0)
 	if memory_on:
 		Perception.co_presence(self, tm)
+	if violence_on:
+		Violence.injuries_noticed(self, tm)
 	if crime_on:
 		Crime.notice_evidence(self, t0)
+	if violence_on:
+		Violence.found_checks(self, t0)
+		Violence.missed_people(self, t0)
+	if crime_on:
 		for r in alive():
 			if not r.pending_hide.is_empty() and loc(r.id) == r.home and not r.down:
 				Crime.hide_loot(self, r, t0 + 55)

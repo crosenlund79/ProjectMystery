@@ -1,14 +1,17 @@
 """Reference statistics from the Python town simulation, for the Godot simulation pilots.
 
-    python3 tools/sim_reference.py              # writes godot/tests/sim_reference.json and sim_reference_theft.json
+    python3 tools/sim_reference.py              # writes godot/tests/sim_reference*.json (three references)
     python3 tools/sim_reference.py --beta-table # prints the Beta(2.2, 2.2) quantile table in scripts/sim/sim_rng.gd
 
-The Godot simulation (godot/scripts/sim/) has no violence or accidents yet (Pilot 3B), so the Python simulation
-is measured with those switched off the same way: no falls or collisions, and an argument that would turn violent
-stops there (counted, not played out). Two references:
+Three references, one for each way the Godot simulation (godot/scripts/sim/) can run:
 
-    sim_reference.json        stealing off too, compared with Godot's crime switch off (Pilots 1 and 2)
-    sim_reference_theft.json  stealing on, compared with Godot's crime switch on (Pilot 3A)
+    sim_reference.json        the crime layer off: no stealing, no falls or collisions, and an argument that would
+                              turn violent stops there (counted, not played out). Compared with Godot's crime
+                              switch off (Pilots 1 and 2).
+    sim_reference_theft.json  stealing on, violence and accidents off as above. Compared with Godot's crime switch
+                              on and violence off (Pilot 3A).
+    sim_reference_crime.json  the whole crime layer, as the Python simulation runs it. Compared with Godot's crime
+                              switch on (Pilot 3B).
 
 Ledger mistakes, discovered losses, suspicion and gossip run in Python in both; the differences this makes are
 listed in docs/godot-simulation-migration.md.
@@ -35,6 +38,7 @@ from mystery.sim.engine import Simulation  # noqa: E402
 
 OUT = os.path.join(ROOT, "godot", "tests", "sim_reference.json")
 OUT_THEFT = os.path.join(ROOT, "godot", "tests", "sim_reference_theft.json")
+OUT_CRIME = os.path.join(ROOT, "godot", "tests", "sim_reference_crime.json")
 PROFILES = ["normal", "scarcity", "crisis", "tension"]
 SEEDS = list(range(1, 11))
 DAYS = 30
@@ -44,27 +48,32 @@ COMPARED_KINDS = ["move", "meal", "pub_meal", "drink", "purchase", "credit", "cr
 PLACES = ["home", "work", "pub", "square", "road", "elsewhere"]
 MEMORY_KINDS = ["presence", "sighting", "intoxicated", "noise", "debt", "refusal", "hardship", "argument",
                 "grudge", "rent_missed", "loan", "help", "reconcile", "purchase", "laid_off", "suspect", "loss",
-                "damage", "theft_self", "stash", "confession"]
-ERRORS = ["misidentified", "time_distorted", "certainty_inflated"]
+                "damage", "theft_self", "stash", "confession", "assault", "injury", "struck", "fall", "death",
+                "missing", "vehicle_damage", "saw_collision", "collision_self", "repair"]
+ERRORS = ["misidentified", "time_distorted", "certainty_inflated", "lie", "mistaken_inference"]
 SPREAD = {"argument": ["argument"], "refusal": ["loan_refused", "credit_refused"], "rent_missed": ["rent_missed"],
-          "loss": ["loss_discovered"]}
+          "loss": ["loss_discovered"], "assault": ["assault"]}
 CRIME_COUNTED = ["theft", "theft_aborted", "forced_entry", "ledger_error", "loss_discovered", "stash_withdraw",
-                 "confession", "cleaned_up"]
-ORIGINAL_STEAL_INTENT = decisions._steal_intent
+                 "confession", "cleaned_up", "assault", "intervened", "death", "fall", "collision", "stopped",
+                 "stopped_to_help", "damage_found", "treated", "repair", "injury_found", "body_found", "missed",
+                 "burial"]
+ORIGINAL = {"steal": decisions._steal_intent, "collision": actions.check_collision, "fall": actions.check_fall,
+            "assault": actions.assault}
 
 
-def crime_layer_off(theft: bool = False) -> None:
-    """Violence and accidents off; stealing off too unless ``theft``."""
-    decisions._steal_intent = ORIGINAL_STEAL_INTENT if theft else (lambda *a, **k: None)
+def deferred_assault(sim, *a, **k):
+    sim.stats["escalations_deferred"] += 1
+
+
+def crime_layer(mode: str) -> None:
+    """``off``: no stealing, violence or accidents; ``theft``: stealing only; ``crime``: everything, as in Python."""
+    decisions._steal_intent = ORIGINAL["steal"] if mode in ("theft", "crime") else (lambda *a, **k: None)
+    actions.check_collision = ORIGINAL["collision"] if mode == "crime" else (lambda *a, **k: None)
+    actions.check_fall = ORIGINAL["fall"] if mode == "crime" else (lambda *a, **k: None)
+    actions.assault = ORIGINAL["assault"] if mode == "crime" else deferred_assault
     if getattr(Simulation, "_measured", False):
         return
     Simulation._measured = True
-    actions.check_collision = lambda *a, **k: None
-    actions.check_fall = lambda *a, **k: None
-
-    def deferred_assault(sim, *a, **k):
-        sim.stats["escalations_deferred"] += 1
-    actions.assault = deferred_assault
 
     original_chat = actions.chat
 
@@ -99,7 +108,7 @@ def place_category(r, node) -> str:
     return "elsewhere"
 
 
-def stats(sim: Simulation, theft: bool = False) -> dict:
+def stats(sim: Simulation, crime: bool = False) -> dict:
     days = max(1.0, sim.t / DAY)
     people = float(len(sim.ids))
     counts = {}
@@ -119,7 +128,7 @@ def stats(sim: Simulation, theft: bool = False) -> dict:
     out["money.town_cash"] = float(wallets + sum(c.cash for c in sim.world.containers.values()))
     out["money.open_debts"] = float(sum(1 for d in sim.world.debts if d.settled is None))
     out.update(memory_stats(sim, counts, people * days))
-    if theft:
+    if crime:
         out.update(crime_stats(sim, counts, people * days))
     return out
 
@@ -191,21 +200,29 @@ def crime_stats(sim, counts: dict, per: float) -> dict:
         if inc is not None and inc.responsible == b.claim.subject:
             right += 1
     out["crime.suspicions_right_share"] = right / len(sus) if sus else -1.0
+    collisions = [i for i in sim.incidents if i.family == "collision"]
+    out["crime.hit_and_run_share"] = sum(1 for i in collisions if i.fled) / len(collisions) if collisions else -1.0
+    harm = [i for i in sim.incidents if i.family in ("assault", "collision", "fall")]
+    out["crime.harm_discovered_share"] = (sum(1 for i in harm if i.discovered_at is not None) / len(harm)
+                                          if harm else -1.0)
     return out
 
 
-def reference(theft: bool = False) -> dict:
-    crime_layer_off(theft)
+LAYERS = {"off": "off (no stealing, falls, collisions; violent escalations counted, not played)",
+          "theft": "stealing on; no falls or collisions; violent escalations counted, not played",
+          "crime": "on: stealing, fights, falls, collisions and all that follows"}
+
+
+def reference(mode: str = "off") -> dict:
+    crime_layer(mode)
     result = {"generated_by": "tools/sim_reference.py", "days": DAYS, "seeds": SEEDS, "residents": 10,
-              "crime_layer": ("stealing on; no falls or collisions; violent escalations counted, not played" if theft
-                              else "off (no stealing, falls, collisions; violent escalations counted, not played)"),
-              "profiles": {}}
+              "crime_layer": LAYERS[mode], "profiles": {}}
     for profile in PROFILES:
         runs = []
         deferred = 0
         for seed in SEEDS:
             sim = Simulation(SimConfig(seed=seed, days=DAYS, profile=profile, residents=10)).run()
-            runs.append(stats(sim, theft))
+            runs.append(stats(sim, mode != "off"))
             deferred += sim.stats["escalations_deferred"]
         keys = sorted(runs[0])
 
@@ -247,8 +264,8 @@ def main() -> None:
     if args.beta_table:
         print(", ".join(f"{v:.6f}" for v in beta_table()))
         return
-    for theft, out in ((False, OUT), (True, OUT_THEFT)):
-        ref = reference(theft)
+    for mode, out in (("off", OUT), ("theft", OUT_THEFT), ("crime", OUT_CRIME)):
+        ref = reference(mode)
         with open(out, "w", encoding="utf-8") as f:
             json.dump(ref, f, indent=1, sort_keys=True)
             f.write("\n")
@@ -256,7 +273,10 @@ def main() -> None:
         for profile, data in ref["profiles"].items():
             m = data["mean"]
             extra = (f"  thefts/res-day {m['crime.theft']:.4f}  suspicions right {m['crime.suspicions_right_share']:.2f}"
-                     if theft else "")
+                     if mode != "off" else "")
+            if mode == "crime":
+                extra += (f"  assaults {m['crime.assault']:.4f} falls {m['crime.fall']:.4f} collisions "
+                          f"{m['crime.collision']:.4f} deaths {m['crime.death']:.4f}")
             print(f"{profile:9} meals/res-day {m['per_resident_day.meal']:.2f}  asleep {m['asleep']:.2f}  "
                   f"home {m['share.home']:.2f}  work {m['share.work']:.2f}  pub {m['share.pub']:.2f}  "
                   f"wallet {m['money.mean_wallet']:.0f}  deferred escalations/run {data['escalations_deferred_per_run']}"

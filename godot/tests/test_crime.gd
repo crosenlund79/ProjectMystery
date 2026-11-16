@@ -35,7 +35,7 @@ func run(t, _tree) -> void:
 func _fresh(seed := 3):
 	## A town at Day 1 23:00 with the crime layer on, where nobody knows anything yet, nobody bears a grudge,
 	## and everyone is awake at home.
-	var sim = Simulation.new({"seed": seed, "days": 3, "crime": true})
+	var sim = Simulation.new({"seed": seed, "days": 3, "crime": true, "violence": false})
 	sim.t = SimClock.at(1, 23)
 	for rid in sim.ids:
 		sim.memory[rid] = Memory.new(rid)
@@ -112,7 +112,11 @@ func _rules(sim) -> Array:
 func _switch(t) -> void:
 	t.begin("the crime switch: off by default, and crime needs memory")
 	var off = Simulation.new({"seed": 2, "days": 1})
-	t.eq([off.crime_on, off.config["crime"]], [false, false], "off unless asked for")
+	t.eq([off.crime_on, off.violence_on], [false, false], "off unless asked for")
+	var full = Simulation.new({"seed": 2, "days": 1, "crime": true})
+	t.eq([full.crime_on, full.violence_on], [true, true], "crime on means the whole crime layer")
+	var theft_only = Simulation.new({"seed": 2, "days": 1, "crime": true, "violence": false})
+	t.eq([theft_only.crime_on, theft_only.violence_on], [true, false], "violence off is pilot 3A")
 	var bad = Simulation.new({"seed": 2, "days": 1, "crime": true, "memory": false})
 	t.check(not bad.ok, "crime without memory is refused: nobody could discover, suspect or conceal anything")
 	t.end()
@@ -511,12 +515,12 @@ func _concealment(t) -> void:
 
 
 func _whole_months(t) -> void:
-	t.begin("whole months with crime on: thefts happen, are found or not, and every rule holds")
+	t.begin("whole months with crime on and violence off: thefts happen, are found or not, and every rule holds")
 	var thefts := 0
 	var found := 0
 	var suspicions := 0
 	for profile in ["scarcity", "crisis", "tension"]:
-		var sim = Simulation.new({"seed": 4, "days": 30, "profile": profile, "crime": true}).run()
+		var sim = Simulation.new({"seed": 4, "days": 30, "profile": profile, "crime": true, "violence": false}).run()
 		var problems: Array = SimCheck.problems(sim)
 		t.check(problems.is_empty(), "%s: %d problems, first: %s" % [profile, problems.size(), problems.slice(0, 3)])
 		for inc in sim.incidents:

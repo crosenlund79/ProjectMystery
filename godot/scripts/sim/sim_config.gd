@@ -43,11 +43,15 @@ static func normalize(cfg: Dictionary) -> Dictionary:
 	## filled in.
 	## memory: residents perceive, remember and gossip (Pilot 2). false runs Pilot 1's town exactly, as it was
 	## before memory existed (its pinned histories still hold).
-	## crime: ledger mistakes, theft, hidden loot, discovered losses, evidence and the incident registry (Pilot
-	## 3A). Off by default: with it off, the town lives exactly as it did before (Pilot 1 and 2 histories hold).
+	## crime: Python's whole crime layer. Off by default: with it off, the town lives exactly as it did before
+	## (Pilot 1 and 2 histories hold). On, it brings ledger mistakes, theft, hidden loot, discovered losses,
+	## evidence and the incident registry (Pilot 3A), and with violence (default true) fights, injuries and
+	## deaths, drunken falls, collisions on Mill Road, the clinic, repairs, and people found or missed (Pilot 3B).
+	## crime with violence false is Pilot 3A exactly (its pinned histories hold).
 	return {"seed": int(cfg.get("seed", 1)), "days": int(cfg.get("days", 60)),
 			"profile": String(cfg.get("profile", "normal")), "residents": int(cfg.get("residents", 10)),
-			"memory": bool(cfg.get("memory", true)), "crime": bool(cfg.get("crime", false))}
+			"memory": bool(cfg.get("memory", true)), "crime": bool(cfg.get("crime", false)),
+			"violence": bool(cfg.get("violence", true))}
 
 
 static func problem(cfg: Dictionary) -> String:

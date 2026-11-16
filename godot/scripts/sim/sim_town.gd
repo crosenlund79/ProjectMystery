@@ -232,6 +232,7 @@ static func generate(cfg: Dictionary) -> Dictionary:
 
 static func _give_vehicle(world, residents: Dictionary, households: Dictionary, vid: String, name: String,
 		kind: String, hid: String) -> void:
-	world.vehicles[vid] = {"id": vid, "name": name, "kind": kind, "household": hid, "location": "home:" + hid}
+	world.vehicles[vid] = {"id": vid, "name": name, "kind": kind, "household": hid, "location": "home:" + hid,
+			"damage": "", "damage_event": "", "damage_evidence": ""}
 	for rid in households[hid]:
 		residents[rid].vehicle = vid

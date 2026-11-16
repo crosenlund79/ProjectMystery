@@ -33,6 +33,12 @@ var pressures := []  # [time, event id] of things that went wrong for them
 var cooldowns := {}  # key -> minute until which they won't try that again
 var guilty_of := []  # event ids of their own wrongdoing (crime layer)
 var pending_hide := []  # thefts whose loot they have not yet hidden at home
+var injury := 0  # 0 none, 1 minor, 2 serious (crime layer, violence)
+var injury_event := ""  # what hurt them: an assault, a collision or a fall
+var injury_desc := ""
+var injury_treated := true
+var death_event := ""
+var wants_repair := false  # a driver who fled wants the damage to their vehicle mended
 var worked_today := false
 
 

@@ -10,13 +10,17 @@ const Incidents = preload("res://scripts/sim/sim_incidents.gd")
 const DAY := 1440
 const MEMORY_KINDS := ["presence", "sighting", "intoxicated", "noise", "debt", "refusal", "hardship", "argument",
 		"grudge", "rent_missed", "loan", "help", "reconcile", "purchase", "laid_off", "suspect", "loss", "damage",
-		"theft_self", "stash", "confession"]
-const ERRORS := ["misidentified", "time_distorted", "certainty_inflated"]
+		"theft_self", "stash", "confession", "assault", "injury", "struck", "fall", "death", "missing",
+		"vehicle_damage", "saw_collision", "collision_self", "repair"]
+const ERRORS := ["misidentified", "time_distorted", "certainty_inflated", "lie", "mistaken_inference"]
 const SPREAD := {"argument": ["argument"], "refusal": ["loan_refused", "credit_refused"], "rent_missed": ["rent_missed"],
-		"loss": ["loss_discovered"]}
-## Events only the crime layer makes (Pilot 3A).
+		"loss": ["loss_discovered"], "assault": ["assault"]}
+## Events only the crime layer makes (Pilot 3A), and only its violence (Pilot 3B).
 const CRIME_EVENTS := ["theft", "theft_aborted", "forced_entry", "hide_loot", "stash_withdraw", "ledger_error",
 		"loss_discovered", "cleaned_up", "confession"]
+const VIOLENCE_EVENTS := ["assault", "intervened", "death", "collision", "stopped", "stopped_to_help", "fall",
+		"damage_found", "injury_found", "body_found", "missed", "burial", "treated", "repair"]
+const HARM_KINDS := ["assault", "collision", "fall"]
 const COMPARED_KINDS := ["move", "meal", "pub_meal", "drink", "purchase", "credit", "credit_refused", "wage",
 		"rent_paid", "rent_missed", "loan", "loan_refused", "repay", "help", "reconcile", "argument", "debt_overdue",
 		"deposit", "withdraw", "chat"]
@@ -35,6 +39,7 @@ static func problems(sim) -> Array:
 	_check_debts(sim, out)
 	_check_memory(sim, out)
 	_check_crime(sim, out)
+	_check_violence(sim, out)
 	return out
 
 
@@ -256,14 +261,27 @@ static func _check_memory(sim, out: Array) -> void:
 				if by == null or by == holder or not sim.residents.has(by):
 					out.append("%s: told by nobody" % label)
 				elif b["via"] == null:
-					if not (b["acquired"] == 0 and ev != null and String(ev["kind"]).begins_with("prior_") and involved(by, ev)):
+					# the town's past, told at the start by a party to it; or what a customer tells the mechanic
+					var history: bool = (b["acquired"] == 0 and ev != null and String(ev["kind"]).begins_with("prior_")
+							and involved(by, ev))
+					var to_mechanic: bool = (ev != null and ev["kind"] == "repair" and ev["time"] == b["acquired"]
+							and involved(holder, ev) and involved(by, ev))
+					if not history and not to_mechanic:
 						out.append("%s: told without a source belief" % label)
 				else:
 					var via = sim.beliefs.get(b["via"])
 					if via == null or via["holder"] != by or via["acquired"] > b["acquired"]:
 						out.append("%s: the teller did not believe it first" % label)
-					if (ev == null or not (ev["kind"] in ["chat", "argument"]) or ev["time"] != b["acquired"]
-							or not involved(holder, ev) or not involved(by, ev)):
+					var talked: bool = (ev != null and ev["kind"] in ["chat", "argument"] and ev["time"] == b["acquired"]
+							and involved(holder, ev) and involved(by, ev))
+					# an injured person's account of what happened: to the nurse, to whoever found them, or to
+					# anyone who saw them hurt (told face to face, from what they themselves believe)
+					var account: bool = ev != null and (
+							(ev["kind"] in ["treated", "injury_found"] and ev["time"] == b["acquired"] and involved(holder, ev)
+								and involved(by, ev))
+							or (ev["kind"] in HARM_KINDS and sim.perceived.get(holder + "|" + ev["id"], "") == "trace"
+								and involved(by, ev)))
+					if not talked and not account:
 						out.append("%s: told outside any conversation between %s and %s" % [label, by, holder])
 					if via != null:
 						for k in ["kind", "subject", "other", "location", "detail", "amount", "obj"]:
@@ -282,6 +300,10 @@ static func _check_memory(sim, out: Array) -> void:
 			out.append("%s: %s without being told" % [label, b["error"]])
 		if b["error"] == "misidentified" and not (b["source"] in ["saw", "heard", "told"]):
 			out.append("%s: misidentified without seeing or hearing" % label)
+		if b["error"] == "lie" and b["source"] != "told":
+			out.append("%s: a lie nobody told" % label)
+		if b["error"] == "mistaken_inference" and not (b["source"] in ["inferred", "told"]):
+			out.append("%s: a mistaken inference nobody made" % label)
 
 
 static func _check_crime(sim, out: Array) -> void:
@@ -302,7 +324,7 @@ static func _check_crime(sim, out: Array) -> void:
 			out.append("crime is off but there are %d incidents and %d traces" % [sim.incidents.size(),
 					sim.world.evidence.size()])
 		for ev in sim.events.events:
-			if ev["kind"] in CRIME_EVENTS or ev.has("discreet"):
+			if ev["kind"] in CRIME_EVENTS or ev["kind"] in VIOLENCE_EVENTS or ev.has("discreet"):
 				out.append("crime is off but %s is a %s" % [ev["id"], ev["kind"]])
 				break
 		return
@@ -328,7 +350,7 @@ static func _check_crime(sim, out: Array) -> void:
 				var thief: String = ev["actors"][0]
 				var cid: String = ev["objects"][0]
 				for x in sim.ids:
-					if x != thief and sim.where(x, ev["time"] - 2) == ev["location"]:
+					if x != thief and alive_at(sim, x, ev["time"] - 2) and sim.where(x, ev["time"] - 2) == ev["location"]:
 						out.append("%s: %s stole with %s there" % [id, thief, x])
 				var moved: Array = by_event.get(id, [])
 				if (moved.size() != 1 or moved[0]["src"] != "box:" + cid or moved[0]["dst"] != "box:stash:" + thief
@@ -380,13 +402,21 @@ static func _check_crime(sim, out: Array) -> void:
 					out.append("%s: %s confesses to what they did not do" % [id, culprit])
 	for e in sim.world.evidence:
 		var src: Dictionary = sim.events.by_id.get(e["created_by"], {})
-		if src.is_empty() or src["time"] != e["created_at"] or src["location"] != e["place"]:
+		var there: bool = (not src.is_empty() and (src["location"] == e["place"] if e["kind"] != "vehicle_damage"
+				else e["place"] in src["objects"]))
+		if src.is_empty() or src["time"] != e["created_at"] or not there:
 			out.append("%s (%s) was not made by an event there and then" % [e["id"], e["kind"]])
 			continue
 		if e["removed_at"] >= 0:
+			# cleared away or buried there, or (damage to a vehicle) mended at the workshop
 			var gone: Dictionary = sim.events.by_id.get(e["removed_by"], {})
-			if (gone.is_empty() or gone["kind"] != "cleaned_up" or gone["data"]["evidence"] != e["id"]
-					or gone["time"] != e["removed_at"] or gone["location"] != e["place"] or gone["time"] < e["created_at"]):
+			var ok := false
+			if not gone.is_empty() and gone["time"] == e["removed_at"] and gone["time"] >= e["created_at"]:
+				if gone["kind"] in ["cleaned_up", "burial"]:
+					ok = gone["data"]["evidence"] == e["id"] and gone["location"] == e["place"]
+				elif gone["kind"] == "repair":
+					ok = e["kind"] == "vehicle_damage" and e["place"] in gone["objects"]
+			if not ok:
 				out.append("%s was removed without being cleared away" % e["id"])
 		for rid in e["noticed_by"]:
 			if sim.perceived.get(rid + "|" + e["created_by"], "") != "trace":
@@ -401,18 +431,24 @@ static func _check_crime(sim, out: Array) -> void:
 			if not sim.events.by_id.has(rel):
 				out.append("%s: linked to unknown event %s" % [inc["id"], rel])
 		if inc["discovered_at"] != null:
+			# discovered through an event the discoverer took part in, or saw, heard or saw the trace of: the
+			# count that found a loss, finding someone hurt, the fight they were in or saw, someone hurt they met
 			var found: Dictionary = sim.events.by_id.get(inc["discovery_event"], {})
-			if (found.is_empty() or found["time"] != inc["discovered_at"] or found["actors"][0] != inc["discovered_by"]
-					or inc["discovered_at"] < inc["time"]):
-				out.append("%s: discovered by %s, but not by what they did" % [inc["id"], inc["discovered_by"]])
-			# what was discovered happened inside the window: the theft itself; for a run of ledger mistakes
-			# (one too small to notice is written off at a count, the next joins the same incident), one of them
+			var who: String = inc["discovered_by"]
+			if (found.is_empty() or found["time"] > inc["discovered_at"] or inc["discovered_at"] < inc["time"]
+					or not (involved(who, found) or sim.perceived.has(who + "|" + found["id"]))):
+				out.append("%s: discovered by %s, but not by what they did or saw" % [inc["id"], who])
+			# what was discovered happened inside the window: the theft, the fight, the fall, the collision; for a
+			# run of ledger mistakes (one too small to notice is written off at a count, the next joins the same
+			# incident), one of them. (A smashed fence found by someone who was not on the road before it happened
+			# gets a window of the day before they found it, as in Python: only its end is checked.)
 			var w = inc["window"]
 			var inside := false
+			var fence: bool = inc["family"] == "collision" and inc["victims"].is_empty()
 			for eid in [inc["core_event"]] + inc["related_events"]:
 				var ie: Dictionary = sim.events.by_id.get(eid, {})
-				if (not ie.is_empty() and ie["kind"] in ["theft", "ledger_error"] and w != null and w[0] <= ie["time"]
-						and ie["time"] <= w[1]):
+				if (not ie.is_empty() and ie["kind"] in ["theft", "ledger_error"] + HARM_KINDS and w != null
+						and (fence or w[0] <= ie["time"]) and ie["time"] <= w[1]):
 					inside = true
 			if not inside:
 				out.append("%s: happened outside the window it was discovered in" % inc["id"])
@@ -457,6 +493,172 @@ static func _check_crime(sim, out: Array) -> void:
 						if (ge["location"] == c["location"] and c["start"] - 60 <= ge["time"] and ge["time"] <= until + 60
 								and ge["time"] <= b["acquired"]):
 							out.append("%s: looks for the culprit of their own %s" % [label, g])
+
+
+static func alive_at(sim, rid: String, t: int) -> bool:
+	var r = sim.residents[rid]
+	return r.death_event == "" or int(sim.events.by_id[r.death_event]["time"]) > t
+
+
+static func _victims(ev: Dictionary) -> Array:
+	## Who was hurt by a harmful event: the one attacked or struck, or whoever fell.
+	return ev["actors"] if ev["kind"] == "fall" else ev["targets"]
+
+
+static func _check_violence(sim, out: Array) -> void:
+	## Violence and accidents keep the same rules as everything else, and these besides:
+	##   every injury and every death has a cause (a fight, a collision, a fall) that named the victim; a fight
+	##   follows an argument between the two; a collision happened on a drive along Mill Road, a fall on a walk
+	##   along it; blood, debris, damage to a vehicle and a body are traces of what made them
+	##   the dead do nothing after their death, and lie where they died; the injured are treated at the clinic
+	##   for what really hurt them; a vehicle is mended only after it was damaged, at the workshop, which clears
+	##   the damage; a vehicle is where its last drive left it, and is driven only by its household
+	##   whoever finds someone hurt or dead was there; a driver who drove on is guilty of it, one who stopped owned
+	##   up; the collision is known first-hand only to the driver and whoever was struck
+	if not sim.violence_on:
+		for ev in sim.events.events:
+			if ev["kind"] in VIOLENCE_EVENTS:
+				out.append("violence is off but %s is a %s" % [ev["id"], ev["kind"]])
+				break
+		for rid in sim.ids:
+			var r = sim.residents[rid]
+			if r.injury > 0 or not r.alive or r.down:
+				out.append("violence is off but %s is hurt or dead" % rid)
+		return
+	var died := {}  # rid -> the time they died
+	for ev in sim.events.events:
+		if ev["kind"] == "death":
+			died[ev["actors"][0]] = int(ev["time"])
+	for rid in sim.ids:
+		var r = sim.residents[rid]
+		if r.alive != (r.death_event == "") or r.alive == died.has(rid):
+			out.append("%s is %s, but their death is %s" % [rid, "alive" if r.alive else "dead", r.death_event])
+		if r.injury > 0:
+			var harm: Dictionary = sim.events.by_id.get(r.injury_event, {})
+			if harm.is_empty() or not (harm["kind"] in HARM_KINDS) or not (rid in _victims(harm)):
+				out.append("%s is hurt without a cause that hurt them" % rid)
+		if died.has(rid):
+			var ivs: Array = sim.intervals[rid]
+			if ivs[-1][2] != -1 or ivs[-1][1] > died[rid]:
+				out.append("%s moved after their death" % rid)
+	var moves_by := {}  # rid -> their move events, in time order
+	for ev in sim.events.events:
+		var id: String = ev["id"]
+		for a in ev["actors"]:
+			if died.has(a) and ev["time"] > died[a]:
+				out.append("%s: %s acts after their death" % [id, a])
+		match ev["kind"]:
+			"move":
+				var who: String = ev["actors"][0]
+				if not moves_by.has(who):
+					moves_by[who] = []
+				moves_by[who].append(ev)
+			"assault":
+				var aggressor: String = ev["actors"][0]
+				var victim: String = ev["targets"][0]
+				var cause: Dictionary = sim.events.by_id.get(ev["causes"][0], {}) if not ev["causes"].is_empty() else {}
+				if (cause.is_empty() or cause["kind"] != "argument" or not (involved(aggressor, cause) and involved(victim, cause))
+						or cause["time"] > ev["time"]):
+					out.append("%s: a fight that no argument between them led to" % id)
+				if not (id in sim.residents[aggressor].guilty_of):
+					out.append("%s: %s does not know they did it" % [id, aggressor])
+				var sev: int = ev["data"]["severity"]
+				if sev >= 2 and not _traced(sim, id, "blood"):
+					out.append("%s: a bad fight without blood" % id)
+				if sev == 3 and (not died.has(victim) or sim.events.by_id[sim.residents[victim].death_event]["causes"][0] != id):
+					out.append("%s: a fatal fight but %s did not die of it" % [id, victim])
+			"death":
+				var cause: Dictionary = sim.events.by_id.get(ev["causes"][0], {}) if not ev["causes"].is_empty() else {}
+				if cause.is_empty() or not (cause["kind"] in HARM_KINDS) or not (ev["actors"][0] in _victims(cause)):
+					out.append("%s: a death without a cause that killed them" % id)
+				if not _traced(sim, id, "body"):
+					out.append("%s: a death without a body" % id)
+			"collision":
+				var driver: String = ev["actors"][0]
+				var vid: String = ev["data"]["vehicle"]
+				var drove := false
+				for mv in moves_by.get(driver, []):
+					if (mv["data"]["drive"] and vid in mv["objects"] and "road" in mv["data"]["path"]
+							and mv["time"] <= ev["time"] and ev["time"] - mv["time"] <= 60):
+						drove = true
+				if not drove:
+					out.append("%s: %s crashed without driving %s along Mill Road" % [id, driver, vid])
+				if not _traced(sim, id, "vehicle_damage") or not _traced(sim, id, "debris"):
+					out.append("%s: a collision without its traces" % id)
+				var inc: Dictionary = Incidents.incident_for(sim, id)
+				if inc.is_empty() or inc["responsible"] != driver or inc["fled"] != (id in sim.residents[driver].guilty_of):
+					out.append("%s: %s fled or owned up, and the registry or their conscience says otherwise" % [id, driver])
+				elif not inc["fled"] and not inc["reported_openly"]:
+					out.append("%s: %s stopped but did not own up" % [id, driver])
+			"fall":
+				var walker: String = ev["actors"][0]
+				var walked := false
+				for mv in moves_by.get(walker, []):
+					if (not mv["data"]["drive"] and "road" in mv["data"]["path"] and mv["time"] <= ev["time"]
+							and ev["time"] - mv["time"] <= 60):
+						walked = true
+				if not walked:
+					out.append("%s: %s fell on Mill Road without walking it" % [id, walker])
+				var inc: Dictionary = Incidents.incident_for(sim, id)
+				if inc.is_empty() or inc["responsible"] != null or inc["victims"] != [walker]:
+					out.append("%s: a fall registered as someone's doing" % id)
+			"treated":
+				var patient: String = ev["targets"][0]
+				var harm: Dictionary = sim.events.by_id.get(ev["causes"][0], {}) if not ev["causes"].is_empty() else {}
+				if harm.is_empty() or not (harm["kind"] in HARM_KINDS) or not (patient in _victims(harm)):
+					out.append("%s: %s treated for something that did not hurt them" % [id, patient])
+				if ev["location"] != "clinic" or not (ev["actors"][0] in sim.world.locations["clinic"]["staff"]):
+					out.append("%s: treated by someone who is not the nurse" % id)
+			"repair":
+				var damage: Dictionary = sim.events.by_id.get(ev["causes"][0], {}) if not ev["causes"].is_empty() else {}
+				if damage.is_empty() or damage["kind"] != "collision" or damage["data"]["vehicle"] != ev["objects"][0]:
+					out.append("%s: a repair to %s, which was not damaged" % [id, ev["objects"][0]])
+				if ev["location"] != "workshop" or not _traced(sim, id, "scrap"):
+					out.append("%s: a repair away from the workshop, or leaving no scrap" % id)
+			"injury_found", "body_found", "intervened":
+				for a in ev["actors"]:
+					if sim.where(a, ev["time"]) != ev["location"]:
+						out.append("%s: %s was not there" % [id, a])
+			"missed":
+				if not died.has(ev["data"]["missing"]) or died[ev["data"]["missing"]] > ev["time"]:
+					out.append("%s: missing someone who was alive" % id)
+			"burial":
+				var body: Dictionary = {}
+				for e in sim.world.evidence:
+					if e["id"] == ev["data"]["evidence"]:
+						body = e
+				if body.is_empty() or body["kind"] != "body" or body["noticed_by"].is_empty() or ev["time"] - body["created_at"] < 3 * DAY:
+					out.append("%s: a burial of a body nobody found, or too soon" % id)
+	# every vehicle is where its last drive left it, and only its household drives it
+	for vid in sim.world.vehicles:
+		var veh: Dictionary = sim.world.vehicles[vid]
+		var at: String = "home:" + String(veh["household"])
+		for ev in sim.events.events:
+			if ev["kind"] == "move" and ev["data"]["drive"] and vid in ev["objects"]:
+				var path: Array = ev["data"]["path"]
+				if path[0] != at:
+					out.append("%s: %s drives %s from %s, but it was at %s" % [ev["id"], ev["actors"][0], vid, path[0], at])
+				if sim.residents[ev["actors"][0]].household != veh["household"]:
+					out.append("%s: %s drives another household's %s" % [ev["id"], ev["actors"][0], vid])
+				at = path[-1]
+		if at != veh["location"]:
+			out.append("%s is at %s, but its last drive ended at %s" % [vid, veh["location"], at])
+	# first-hand knowledge of a collision is the driver's and the one struck
+	for bid in sim.beliefs:
+		var b: Dictionary = sim.beliefs[bid]
+		var kind: String = b["claim"]["kind"]
+		if kind in ["collision_self", "struck"] and b["source"] == "self":
+			var ev: Dictionary = sim.events.by_id.get(b["event"], {}) if b["event"] else {}
+			var role: Array = ev.get("actors", []) if kind == "collision_self" else ev.get("targets", [])
+			if not (b["holder"] in role):
+				out.append("%s: %s knows first-hand of a collision they were not in" % [bid, b["holder"]])
+
+
+static func _traced(sim, event_id: String, kind: String) -> bool:
+	for e in sim.world.evidence:
+		if e["created_by"] == event_id and e["kind"] == kind:
+			return true
+	return false
 
 
 static func _root(sim, b: Dictionary) -> Dictionary:
@@ -519,7 +721,8 @@ static func memory_stats(sim) -> Dictionary:
 
 
 const CRIME_COUNTED := ["theft", "theft_aborted", "forced_entry", "ledger_error", "loss_discovered", "stash_withdraw",
-		"confession", "cleaned_up"]
+		"confession", "cleaned_up", "assault", "intervened", "death", "fall", "collision", "stopped", "stopped_to_help",
+		"damage_found", "treated", "repair", "injury_found", "body_found", "missed", "burial"]
 
 
 static func incident_at(sim, claim: Dictionary) -> Dictionary:
@@ -536,8 +739,9 @@ static func incident_at(sim, claim: Dictionary) -> Dictionary:
 
 static func crime_stats(sim) -> Dictionary:
 	## Crime-layer events per resident per day; the share of thefts discovered; the share of suspicions that fall
-	## on whoever was really responsible (a ledger mistake has nobody); cash taken per theft of cash. Undefined
-	## values are -1. tools/sim_reference.py measures Python the same way.
+	## on whoever was really responsible (a ledger mistake, a fall have nobody); cash taken per theft of cash; the
+	## share of collisions where the driver drove on; the share of fights, collisions and falls discovered.
+	## Undefined values are -1. tools/sim_reference.py measures Python the same way.
 	var days: float = maxf(1.0, sim.t / float(DAY))
 	var per := float(sim.ids.size()) * days
 	var counts: Dictionary = sim.events.counts()
@@ -573,6 +777,21 @@ static func crime_stats(sim) -> Dictionary:
 			if not inc.is_empty() and inc["responsible"] == b["claim"]["subject"]:
 				right += 1
 	out["suspicions_right_share"] = float(right) / suspicions if suspicions > 0 else -1.0
+	var collisions := 0
+	var fled := 0
+	var harm := 0
+	var harm_found := 0
+	for inc in sim.incidents:
+		if inc["family"] == "collision":
+			collisions += 1
+			if inc["fled"]:
+				fled += 1
+		if inc["family"] in HARM_KINDS:
+			harm += 1
+			if inc["discovered_at"] != null:
+				harm_found += 1
+	out["hit_and_run_share"] = float(fled) / collisions if collisions > 0 else -1.0
+	out["harm_discovered_share"] = float(harm_found) / harm if harm > 0 else -1.0
 	return out
 
 

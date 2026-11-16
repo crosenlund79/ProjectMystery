@@ -6,7 +6,7 @@
 ##              adj: {neighbour: walking minutes}}
 ##   container {id, location, label, owners, cash, food, hidden, expected_cash, expected_food, last_check,
 ##              unexplained: events that changed it unseen since it was last counted (a theft, a ledger mistake)}
-##   vehicle   {id, name, kind, household, location}
+##   vehicle   {id, name, kind, household, location, damage, damage_event, damage_evidence} ("" when undamaged)
 ##   debt      {id, debtor, creditor, amount, due, created, origin_event, kind, settled, settled_event,
 ##              overdue_event}; settled = -1 while open
 ##   transfer  {time, event, asset, src, dst, amount}

@@ -268,16 +268,39 @@ static func made_by(sim, rid: String, e: Dictionary) -> bool:
 
 
 static func notice(sim, rid: String, e: Dictionary, t: int) -> void:
-	## Someone sees a trace with their own eyes: a belief that something is damaged, pointing at what made it.
+	## Someone sees a trace with their own eyes: a belief that something is damaged, pointing at what made it. A
+	## smashed fence nobody owned up to is how a collision without a victim is discovered.
 	e["noticed_by"].append(rid)
 	sim.perceived[rid + "|" + e["created_by"]] = "trace"
-	var detail := ""
-	if e["kind"] == "forced_door":
-		detail = "the back door of %s forced" % sim.world.name_of(e["place"])
+	var claim := {}
+	if e["kind"] == "vehicle_damage":
+		var veh: Dictionary = sim.world.vehicles[e["place"]]
+		claim = Memory.claim("vehicle_damage", {"obj": veh["id"], "location": veh["location"], "start": t,
+				"detail": veh["damage"]})
+	elif e["kind"] == "forced_door":
+		claim = Memory.claim("damage", {"location": e["place"], "start": t,
+				"detail": "the back door of %s forced" % sim.world.name_of(e["place"])})
+	elif e["kind"] == "blood":
+		claim = Memory.claim("damage", {"location": e["place"], "start": t,
+				"detail": "blood at %s" % sim.world.name_of(e["place"])})
 	else:
-		detail = e["glimpse"] if e["glimpse"] != "" else e["kind"]
-	sim.add_belief(rid, Memory.claim("damage", {"location": e["place"], "start": t, "detail": detail}), "saw", 0.9, t,
-			{"event": e["created_by"]})
+		claim = Memory.claim("damage", {"location": e["place"], "start": t,
+				"detail": e["glimpse"] if e["glimpse"] != "" else e["kind"]})
+	sim.add_belief(rid, claim, "saw", 0.9, t, {"event": e["created_by"]})
+	if e["kind"] == "debris":
+		var inc: Dictionary = Incidents.incident_for(sim, e["created_by"])
+		if (not inc.is_empty() and inc["discovered_at"] == null and inc["family"] == "collision"
+				and inc["victims"].is_empty()):
+			var found: Dictionary = sim.emit("damage_found", "road", [rid], {"causes": [e["created_by"]], "notable": true,
+					"time": t, "summary": "%s notices the smashed fence on Mill Road." % sim.n(rid)})
+			# since when it could have happened: their own last time on the road before it
+			var start: int = t - DAY
+			var ivs: Array = sim.intervals[rid]
+			for i in range(ivs.size() - 1):
+				if ivs[i][0] == "road" and ivs[i][1] < inc["time"]:
+					start = ivs[i][1]
+			Incidents.discover(sim, inc, rid, t, found["id"], "%s found the white fence along Mill Road smashed on Day %d, with headlight glass on the verge. Nobody has owned up to it." % [
+					sim.residents[rid].full_name(), SimClock.day_of(t)], "The Smashed Fence", [start, t], "road")
 
 
 static func notice_evidence(sim, t0: int) -> void:
@@ -307,6 +330,15 @@ static func tidy_evidence(sim, t0: int) -> void:
 	## Traces don't last: after a while the first person there by daylight clears it away (a forced door is
 	## mended after 30 hours). The culprit tidying up their own trace is concealment.
 	for e in sim.world.evidence:
+		if (e["kind"] == "body" and sim.world.present_at(e, t0) and not e["noticed_by"].is_empty()
+				and t0 - int(e["created_at"]) >= 3 * DAY):
+			# three days after a body was found, it is taken away and buried
+			var burial: Dictionary = sim.emit("burial", e["place"], [], {"data": {"evidence": e["id"]},
+					"causes": [e["created_by"]], "intent": "lawful", "time": t0,
+					"summary": "The body is taken away and buried."})
+			e["removed_at"] = t0
+			e["removed_by"] = burial["id"]
+			continue
 		if not sim.world.present_at(e, t0) or not TIDY_AFTER.has(e["kind"]):
 			continue
 		if t0 - int(e["created_at"]) < int(TIDY_AFTER[e["kind"]]):

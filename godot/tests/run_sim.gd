@@ -1,11 +1,12 @@
 ## Headless demonstration of the native town simulation (no Python, no rendering, no network):
 ##   godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal
-##       [--residents=10] [--memory=off] [--crime] [--out=<folder>] [--golden]
+##       [--residents=10] [--memory=off] [--crime] [--violence=off] [--out=<folder>] [--golden]
 ## Prints the town, its people, the first day hour by hour, a line per day, the end state, the integrity
 ## checks and the event-log digest; --out writes the whole history as JSON; --golden checks the pinned
-## digests in tests/sim_golden.json (the same check the Windows tests make); --crime turns on theft, financial
-## incidents, discovery and evidence (Pilot 3A) and prints what really happened against what the town came to
-## believe. Exit code 0 only if every check passed.
+## digests in tests/sim_golden.json (the same check the Windows tests make); --crime turns on the whole crime layer
+## (theft and financial incidents, Pilot 3A; fights, falls, collisions and what follows, Pilot 3B; --violence=off
+## leaves out the latter) and prints what really happened against what the town came to believe. Exit code 0 only
+## if every check passed.
 extends SceneTree
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -38,6 +39,8 @@ func _initialize() -> void:
 			cfg["memory"] = false
 		elif a == "--crime":
 			cfg["crime"] = true
+		elif a == "--violence=off":
+			cfg["violence"] = false
 	for path in TestSim.SCRIPTS:
 		var script = load(path)
 		if script == null or not script.can_instantiate():
@@ -253,14 +256,14 @@ func _crime(sim) -> void:
 				"; owned up to" if inc["reported_openly"] else ""])
 		var knew := {}
 		var guessed := {}  # "holder -> subject" -> right or wrong (one line each, however often re-inferred)
+		var linked := [inc["core_event"], inc["discovery_event"]] + inc["related_events"]
 		for bid in sim.beliefs:
 			var b: Dictionary = sim.beliefs[bid]
 			var c: Dictionary = b["claim"]
-			if c["kind"] == "loss" and inc["discovery_event"] != null:
-				var root: Dictionary = SimCheck._root(sim, b)
-				if root["event"] == inc["discovery_event"]:
-					knew[b["holder"]] = true
-			elif c["kind"] == "suspect" and b["source"] == "inferred":
+			var root: Dictionary = SimCheck._root(sim, b)
+			if root["event"] != null and root["event"] in linked and c["kind"] != "suspect":
+				knew[b["holder"]] = true
+			if c["kind"] == "suspect" and b["source"] == "inferred":
 				var about: Dictionary = SimCheck.incident_at(sim, c)
 				if not about.is_empty() and about["id"] == inc["id"]:
 					guessed["%s suspects %s" % [sim.n(b["holder"]), sim.n(c["subject"])]] = (
@@ -269,11 +272,21 @@ func _crime(sim) -> void:
 			var guesses := []
 			for g in guessed:
 				guesses.append("%s (%s)" % [g, guessed[g]])
-			print("      %d people came to know of the loss; %s" % [knew.size(), ", ".join(guesses) if not guesses.is_empty()
+			print("      %d people came to know of it; %s" % [knew.size(), ", ".join(guesses) if not guesses.is_empty()
 					else "nobody suspected anyone"])
 	var counts: Dictionary = sim.events.counts()
 	print("  Accusations: %d.  Confessions: %d.  Attempts given up: %d.  Spent from hidden stashes: %d times." % [
 			_accusations(sim), counts.get("confession", 0), counts.get("theft_aborted", 0), counts.get("stash_withdraw", 0)])
+	var hurt := []
+	for rid in sim.ids:
+		var r = sim.residents[rid]
+		if not r.alive:
+			hurt.append("%s is dead" % r.first)
+		elif r.injury > 0:
+			hurt.append("%s is hurt (%s)%s%s" % [r.first, r.injury_desc, "" if r.injury_treated else ", untreated",
+					", lying where they fell" if r.down else ""])
+	if not hurt.is_empty():
+		print("  At the end: " + "; ".join(hurt) + ".")
 	if not sim.world.evidence.is_empty():
 		print("\nTraces:")
 	for e in sim.world.evidence:

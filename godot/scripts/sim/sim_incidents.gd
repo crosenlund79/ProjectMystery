@@ -10,7 +10,9 @@
 ## outcome, severity, hook_kind, motive, related_events, discovered_at, discovered_by, discovery_event, window,
 ## hook_place, hook_text, title, reported_openly, fled, case_start}; absent values are null.
 ##
-## Pilot 3A registers two families: theft and accounting_error. Assault, falls and collisions are Pilot 3B.
+## Families: theft and accounting_error (Pilot 3A); assault, collision and fall (Pilot 3B). An accident is
+## registered like anything else, but whether it could ever become a case is decided elsewhere (case packaging,
+## a later pilot): a collision owned up to on the spot is "reported openly", and is no candidate.
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
@@ -19,11 +21,18 @@ const DAY := 1440
 const MECHANISM_LABELS := {
 	"stolen": "stolen by someone",
 	"accounting_error": "a bookkeeping mistake (nothing was taken)",
+	"assaulted": "attacked by someone",
+	"struck_by_vehicle": "struck by a vehicle",
+	"vehicle_collision": "a vehicle crashed into it",
+	"accidental_fall": "an accidental fall",
+	"vandalism": "deliberate vandalism",
 	"unresolved": "cannot be determined from the evidence",
 }
 const MOTIVES := {
 	"money_trouble": "money trouble",
 	"grudge": "anger or an old grudge",
+	"intoxication": "drink clouded their judgement",
+	"panic": "panic and fear of being found out",
 	"none": "no one intended harm",
 	"unknown": "unknown",
 }

@@ -10,7 +10,8 @@
 ## hunger with an empty pantry and an empty purse), temperament and an opportunity line up, and it competes
 ## with every lawful one. There is no rule like "desperate enough means steal".
 ##
-## Not here yet (Pilot 3B): the clinic and repairs (only needed after injuries and collisions).
+## After a fight, a fall or a collision, the injured rest more, work less and go to the clinic, and a driver who
+## drove on wants their vehicle mended (the workshop).
 extends RefCounted
 
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
@@ -75,14 +76,15 @@ static func choose(sim, r, t: int) -> Dictionary:
 		night = 35
 	elif h >= 23 or h < 5:
 		night = 70
-	_add(sim, cands, "sleep", home, night + maxf(0.0, 60 - r.energy) + r.intox * 0.25)
-	_add(sim, cands, "rest", home, 22 + (15 if r.energy < 40 else 0) + (8 if here == home else 0))
+	_add(sim, cands, "sleep", home, night + maxf(0.0, 60 - r.energy) + r.intox * 0.25 + 20 * r.injury)
+	_add(sim, cands, "rest", home, 22 + (15 if r.energy < 40 else 0) + 25 * r.injury + (8 if here == home else 0))
 
 	# --- work
 	var on_shift: bool = sim.on_shift(r, t)
 	if on_shift:
 		var s: float = 75 + tr["diligence"] * 20 - maxf(0.0, r.intox - 30) * 0.6 * (1 - tr["diligence"])
 		s -= 40 if r.energy < 12 else 0
+		s -= 70 if r.injury >= 2 else 0
 		_add(sim, cands, "work", r.workplace, s)
 
 	# --- food
@@ -116,6 +118,14 @@ static func choose(sim, r, t: int) -> Dictionary:
 			sim.daily[key] = 1 if sim.rng.random() < sim.profile["odd_jobs"] else 2
 		if sim.daily[key] == 1:
 			_add(sim, cands, "odd_job", "mill", 55 + pressure * 40 + tr["diligence"] * 15 + (10 if here == "mill" else 0))
+
+	# --- injuries and vehicles (only after a fight, a fall or a collision: crime layer, violence)
+	if r.injury > 0 and not r.injury_treated and sim.business_open("clinic", t):
+		_add(sim, cands, "clinic", "clinic", 70 + 30 * r.injury)
+	if r.wants_repair and r.vehicle != "" and sim.business_open("workshop", t):
+		var veh: Dictionary = sim.world.vehicles[r.vehicle]
+		if veh["damage"] != "" and veh["location"] == here:
+			_add(sim, cands, "repair", "workshop", 55 + (25 if veh["damage_event"] in r.guilty_of else 0))
 
 	# --- people
 	if 8 <= h and h < 22:
