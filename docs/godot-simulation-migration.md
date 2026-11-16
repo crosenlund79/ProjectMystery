@@ -1,7 +1,7 @@
 # Moving the town simulation to Godot
 
 The goal is a self-contained Godot 4 game in which the town simulation, case generation and the investigation
-all run natively, with Python retired from the active architecture. This document covers four pilots:
+all run natively, with Python retired from the active architecture. This document covers five pilots:
 
 - **Pilot 1:** residents living in a town.
 - **Pilot 2:** what they see, hear, remember and tell each other.
@@ -9,12 +9,16 @@ all run natively, with Python retired from the active architecture. This documen
   leaves, and whom the town suspects.
 - **Pilot 3B:** violence and accidents: fights, falls and collisions on Mill Road, and what follows them:
   injuries and the clinic, damaged vehicles and the workshop, people found hurt, missed or dead.
+- **Pilot 4A:** case extraction: the material for an investigation (testimony, traces, records, who lets the
+  investigator look where) taken from Godot's own simulated history, with the truth sealed apart.
 
 With pilot 3B, the whole Python simulation runs natively in Godot. One rule then differs from Python on
 purpose: shop workers may serve themselves, which ends a deadlock in which the whole town stops buying food (see
 [The grocery deadlock fix](#the-grocery-deadlock-fix-a-deliberate-difference-from-python)).
 
-The existing game is unchanged: cases are made by Python and played in Godot.
+The existing game is unchanged: its bundled cases are still made by Python and played in Godot. Since pilot 4A,
+Godot can also derive case material from its own simulation, without Python; packaging that into playable cases
+is pilot 4B.
 
 ## What pilot 1 contains
 
@@ -188,12 +192,49 @@ for the case-generation pilot to decide (see [Next](#next-pilot-4-evidence-case-
   on pub meals). Python's lower crisis-season meals, long listed as a difference (1.51 against Godot's 1.89),
   were its stalled months: on the months in which the grocery kept trading, the two agree (1.86 / 1.86).
 
+## What pilot 4A adds: case extraction
+
+`godot/scripts/cases/` derives everything an investigation needs from Godot's own simulated history. Each case
+candidate is frozen at its case start, the hour the investigator arrives. It is the extraction half of Python's
+`mystery/cases`; the suitability verdict, hints and the playable package are pilot 4B.
+
+| Python (`mystery/`) | Godot (`godot/scripts/cases/`) | What it does |
+| --- | --- | --- |
+| `cases/export.py` (`snapshot_hook`) | `case_extract.gd` (`collect`) | **Candidates.** Runs a town and, at the end of the hour each incident's case starts, freezes every candidate from the registry: discovered, and not owned up to. The simulation is not disturbed: its history is the same with extraction as without (checked against a pinned digest). |
+| `cases/export.py` (`_Builder`: testimony) | `case_builder.gd` (`_resident`, `_disclosure`, `_status`, `_supports`) | **Testimony from beliefs.** Every living resident's beliefs, after forgetting (`recall`) and as recalled now (a sighting may come back 30-60 minutes off). Kept to themselves: their own wrongdoing (self-protection). Guarded (if honest) or withheld (if not): things that would hurt someone they love. Hedged: things they are unsure of. Each statement is audited: the belief behind it, accurate or mistaken and why, open, guarded or withheld and why, and what it supports. |
+| `cases/export.py` (`_whereabouts`, the deer, the fight) | `case_builder.gd` | **Lies, only where the history gives a reason.** Someone responsible whom nobody saw at it gives a false account of where they were (audited with the true account it hides). A driver who drove on explains the damage with a deer. Someone who started a fight says the other did. |
+| `cases/testimony.py` | `case_text.gd` | **Wording.** "I saw", "I heard", "X told me", "I reckon", the speaker's own experiences in the first person, the plain and the exact account of where someone was, and summaries of everyday matters ("I saw Ana, Ben and Cat at the pub ..."), each standing for its member statements. |
+| `cases/export.py` (`_consent`, `_evidence`, `_records`, `_vehicles`) | `case_builder.gd` | **Traces, records, vehicles, and where they can be found.** Every trace still there at the case start (one cleared away, mended or buried before then is gone). The last four days of every book: the ledger, the pub's tabs, the clinic log, the workshop orders. Every vehicle and where it is parked. Public places are open. A private place, its books and the vehicles parked there need the owner's leave. An owner hiding a trace of their own doing refuses, and so does a very private household. |
+| `cases/relevance.py` | `case_relevance.gd` | **Relevance.** Every statement, trace and record line is connected, unrelated or uncertain, from the incident's causal web. Truth-blind: a lie is judged by what it covers. Identity-blind: whereabouts are judged by place and time, so checking one never singles out the culprit. |
+| `cases/export.py` (`_investigation`, `_truth`) | `case_builder.gd` | **Two views of one instant.** The investigation holds the hook, people, places, what each resident is willing to say (text only), and the traces and records the investigator can reach. The sealed truth holds the incident, its causal chain, the answer and narrative, private states, and audits of every statement, trace (with where it is and whether, and by whom, it is kept out of reach) and record line. |
+| `diagnostics/integrity.py` (`check_spoiler_boundary`, `check_case`) | `case_extract.gd` (`spoiler_problems`, `provenance_problems`) | **Checks** (extended): see [How it is verified](#case-extraction-pilot-4a). |
+
+**Case principles.**
+- **A candidate is not a case.** `eligibility` marks which candidates a playable mystery could ever be made of:
+  only an incident with someone genuinely responsible for a crime (a theft, a fight, a collision driven on
+  from).
+  - Never eligible: a fall, which is nobody's doing; a ledger mistake, which is no crime; a collision owned up
+    to on the spot, which is no candidate at all.
+  - A suspicion is not an incident and never makes a case.
+  - Whether an eligible candidate is actually solvable is pilot 4B's question.
+- **Nothing invented afterwards.** Every statement comes from a belief its speaker held by the case start, or
+  is an audited lie the history gives them a reason to tell. Every trace is still there, every record line was
+  written, and every account of someone's movements matches the presence record (or is the culprit's audited
+  lie).
+- **Contradictions are real.** Testimony disagrees only through actual beliefs: misidentifications, drifted
+  times, wrong suspicions, loyalty, and lies by whoever has something to hide.
+- **The investigator never gets privileged knowledge.** The view has no event or belief ids, no audit field, no
+  verdict and no causal link. A trace behind a refusal is not in it at all.
+- Python's case identifiers (`<seed>-<season>-<days>d-r<residents>-<incident>`), statement keys (`K0001`),
+  trace and record references (`T-…`, `R-…`), topics and vocabulary are kept, so pilot 4B can package the
+  material in the existing case format.
+
 ## What waits for later pilots
 
-These are the boundaries. The next layer plugs into the event log, presence intervals, debts, records, money
-transfers, beliefs, traces and incidents that pilots 1 to 3B keep.
+These are the boundaries. The next layer plugs into the case material pilot 4A extracts.
 
-- **Evidence, testimony export, case validation and packaging** (`mystery/cases`): pilot 4.
+- **Suitability, hints, case packaging and saved case generation** (`mystery/cases/suitability.py`,
+  `package.py`, `library.py`): pilot 4B.
 - **The investigation rules** already run in Godot (`scripts/core/`) and are untouched.
 
 ## Determinism
@@ -282,8 +323,17 @@ godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --
 - `--memory=off` runs pilot 1.
 - `--crime` turns on the whole crime layer (pilots 3A and 3B); `--violence=off` with it runs pilot 3A only.
 - `--shop-self-service=off` runs Python's shop rule, without the grocery deadlock fix.
+- `--cases` (pilot 4A) freezes every case candidate at its case start. For each it prints the hook, whether a
+  playable mystery could ever be made of it and why, how much testimony there is and of what kind, the traces on
+  view or behind a refusal, the culprit's own account of where they were, the sealed narrative, and the result
+  of the provenance and spoiler checks. With `--out`, it writes each case's investigation and sealed truth as
+  JSON.
 
-CI runs both commands on Linux and uploads the results as the `simulation-demo` artifact.
+```bash
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --profile=tension --crime --cases --out=sim-demo
+```
+
+CI runs these commands on Linux and uploads the results as the `simulation-demo` artifact.
 
 ```gdscript
 var sim = preload("res://scripts/sim/simulation.gd").new({"seed": 7, "days": 30, "profile": "tension"}).run()
@@ -295,8 +345,8 @@ for b in sim.memory[sim.ids[0]].beliefs:
 
 ## How it is verified
 
-`godot/tests/test_sim.gd`, `test_memory.gd`, `test_crime.gd`, `test_violence.gd` and `test_grocery.gd` are part of
-the Godot test run in CI.
+`godot/tests/test_sim.gd`, `test_memory.gd`, `test_crime.gd`, `test_violence.gd`, `test_grocery.gd` and
+`test_extraction.gd` are part of the Godot test run in CI.
 
 ### The world (pilot 1, and still with memory on)
 
@@ -444,6 +494,38 @@ Every scenario and every whole month also checks that every belief has a plausib
 | Solitary grocers | In 8 normal-season towns whose grocer lives alone, the pantry is empty after the first open hour on 3 of 208 shop days (Python without the fix: 49%). |
 
 Every Python comparison run must also trade to the end of the month (next section).
+
+### Case extraction (pilot 4A)
+
+`tests/test_extraction.gd` freezes every case candidate of 20 months with the whole crime layer (4 seasons x 5
+seeds): 51 cases, 27,225 statements, 97 traces and 4,602 record lines (CI run 52).
+
+**Every case** (`case_extract.gd`, `provenance_problems`, run at the case start):
+
+| Rule | What is checked |
+| --- | --- |
+| The spoiler boundary | The investigation view holds no event id (E000123), no belief id (B000123) and none of the truth's fields: status, lie, error, belief, event, supports, intent, causes, implicates, responsible, answer, narrative, chain, guilty_of, traits, disclosure, segments, eligibility and the rest. |
+| Statements | Every statement has an audit entry for its speaker, who is alive at the case start. A truthful statement is its speaker's own belief, held by then, told as it came ("saw" as seen, "told" as told), and reads exactly as that belief renders when recalled at that moment. A mistake has a cause. A summary stands for two or more real statements. A thief's own knowledge of their theft never appears. |
+| Lies | Each has an explanation and a reason in the history. A false account of someone's movements comes only from whoever is responsible, and the true account it hides matches the presence record. A made-up story covers that person's own incident. A fighter's lie is about a fight they started. |
+| Accounts | Every truthful account of where someone was matches where the presence record puts them. |
+| Withheld | Nothing withheld to protect oneself is in the view, and everything withheld is the speaker's own belief. |
+| Traces | Each one in the view is where it says, still there at the case start, left by something that had happened by then, and in the evidence audit. No trace is shown where the investigator may not look. One gone before the case start is in neither view. |
+| Records | Each line in the view is the book's line as written, by the case start, after the event it records. |
+| Relevance | Every "connected" verdict comes from an event in the incident's causal web. |
+| The answer | The sealed answer names whoever was responsible; the chain includes the incident and nothing after the case start; an eligible case has someone responsible for a crime. |
+
+**Scenarios and properties** (`test_extraction.gd`):
+
+| Test | What it shows |
+| --- | --- |
+| Determinism | The same month gives byte-identical cases twice, and extracting them leaves the pinned history (seed 1, tension) unchanged. |
+| Candidates | Every incident discovered and not owned up to by its case start has a case, frozen at that instant; none comes from an incident nobody discovered. Eligibility follows the rule above. Of 51 candidates, 34 could be playable (29 thefts, 3 collisions, 2 fights). 17 never could: 15 ledger mistakes and 2 falls. |
+| Mistaken identities, drifting times, false suspicions | 125 statements put the wrong person (or the right one at the wrong time) somewhere. 1,939 have a drifted time and 1,459 are wrong suspicions. A wrong suspicion pointing at anyone but the case's culprit is marked misleading, and none is marked correct. |
+| Loyalty | 594 statements guarded and 984 withheld to protect someone the speaker loves. |
+| Concealment | In all 29 theft cases with the thief alive, the thief withholds their theft and their hidden stash (198 things withheld for self-protection in all) and never tells of them. |
+| Lies | 46 false accounts of their movements by whoever was responsible, and 3 deer. |
+| Missing and out-of-reach traces | 26 traces were cleared away, mended or buried before a case started and appear nowhere. 77 are kept from the investigator by a refusal (a thief's stash at home, damage on a guilty driver's car), each audited with who refused, none in the view. 20 are on view. |
+| Undiscovered incidents | No case, and no visible statement tells of one. |
 
 ### Compared with Python
 
@@ -607,7 +689,62 @@ hours, wages 0.60 / 0.58).
 - **Speed:** 30 simulated days with the whole crime layer take 0.64-1.68 s on the Windows CI runner and 1.2 s
   on Linux.
 
+## Results of case extraction (CI run 52)
+
+`tools/case_reference.py` runs Python's extraction (`mystery/cases/export.py`) on 40 months (4 seasons x 10
+seeds, the whole crime layer) and measures its 104 cases exactly as `case_extract.gd` (`stats`) measures Godot's
+51 from 20 months. CI checks that the reference regenerates identically. The two simulations draw different
+histories from the same rules, so the cases are compared by what they hold. Each cell is Godot / Python.
+
+**What a case holds** (means per case):
+
+| Statements | Per living resident | Summaries | Guarded | Withheld | Lies | Evasive residents | Traces (on view) | Record lines | Places refused |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 534 / 550 | 53 / 55 | 56 / 60 | 71 / 72 | 23 / 21 | 0.96 / 1.00 | 5.2 / 4.6 | 1.9 (0.39) / 2.1 (0.32) | 90 / 86 | 2.1 / 2.0 |
+
+**Where statements come from, and how true they are** (shares of all statements but summaries):
+
+| Saw | Told | Self | Inferred | Heard | Accurate | Mistaken | Unverifiable | Lies |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.40 / 0.43 | 0.38 / 0.37 | 0.19 / 0.19 | 0.021 / 0.017 | 0.002 / 0.001 | 0.84 / 0.85 | 0.14 / 0.13 | 0.017 / 0.013 | 0.002 / 0.002 |
+
+**Candidates and channels:**
+- **Candidates:** 2.55 / 2.60 a month in a town of 10.
+  - Thefts: 57% / 66%.
+  - Ledger mistakes: 29% / 21%.
+  - Collisions: 6% / 4%.
+  - Fights: 4% / 4%.
+  - Falls: 4% / 5%.
+  - Could be playable: 67% / 74%.
+- **Share of cases with at least one statement that:**
+  - places the responsible person at the scene: 16% / 13%;
+  - saw the act itself: 6% / 4%;
+  - gives a motive: 61% / 73%;
+  - shows sudden money: 29% / 29%;
+  - is the culprit's lie about their movements: 45% / 48%;
+  - misleads: 76% / 66%.
+- **Relevance** (connected, uncertain, unrelated):
+  - statements: 0.03 / 0.04 connected, 0.06 / 0.09 uncertain, 0.91 / 0.87 unrelated;
+  - traces: 0.44 / 0.41 connected;
+  - record lines: 0.010 / 0.020 connected.
+
+Every core statistic (sources, statuses, statements per resident) is within tolerance, and so is every other
+one but the share of cases with a motive (above). **Speed:** a 30-day month with its case candidates extracted
+takes 1.0-3.8 s on the Windows CI runner, of which the simulation is about 1 s.
+
 ## Known differences from Python
+
+### Case extraction (pilot 4A)
+
+| Difference | Godot | Python | Why |
+| --- | --- | --- | --- |
+| Eligibility | every case says whether a playable mystery could ever be made of it, and why | every candidate may be exported, ledger mistakes and falls included | The case principles: only someone genuinely responsible for a crime makes a mystery. Python's bundled library is untouched. |
+| Suitability, hints | not yet (`hints` is empty) | `suitability.evaluate`, `hints` | Pilot 4B. The audit's `supports` tags, which the suitability check reads, are already computed. |
+| Where a trace can be found | the evidence audit says whether it is on view, who keeps it out of reach, whether it is on a vehicle, and who has noticed it | place, kind and source only | So pilot 4B can tell a clue the investigator can reach from one they cannot. |
+| Checks | provenance of every statement, trace and record line, accounts against the presence record, lies against the history, relevance against the web, plus the spoiler boundary (with more forbidden fields) | the spoiler boundary and `check_case` | Pilot 4A's verification. |
+| Reading relationships | read without creating an entry | `r.r(x)` creates a default entry | Extraction runs mid-simulation; Godot's must not change anything (and the pinned digest shows it does not). In Python it is harmless: nothing iterates relationships. |
+| Versions | `godot-native` | the Python simulation's version strings | |
+| Share of cases with a motive statement | 61% | 73% | The one statistic outside tolerance. More of Godot's candidates are ledger mistakes (29% against 21%), which have nobody responsible and so no motive to show. |
 
 ### In every layer: the grocery (deliberate)
 
@@ -693,42 +830,54 @@ left as they are: each would change histories, so each needs a decision before i
 - **Deaths are very rare:** none in Godot's 20 months or Python's 40. Only 1.5-3.5% of fights and 8% of walkers hit
   are fatal. A case generator that wants a death will have to look through many towns or longer runs.
 
-## Next: pilot 4, evidence, case validation and saved case generation
+## Next: pilot 4B, suitability, packaging and saved case generation
 
-**Recommended scope.** Port the case pipeline in `mystery/cases`, so that a town simulated in Godot becomes a
-case the existing Godot game can play, with no Python anywhere. That is about 2,500 lines of Python:
-- `export.py` (958 lines), building a case from an incident;
-- `testimony.py` (431), what each resident says;
-- `package.py` (364), the case package;
-- `suitability.py` (314), whether a case is investigable and how;
-- `library.py` (281), the saved library;
-- `relevance.py` (152), which records and traces bear on the case.
+**Recommended scope.** Turn the material pilot 4A extracts into cases the existing game can play, with no
+Python:
+- `suitability.py` (314 lines), the channels and the verdict;
+- `hints` (in `suitability.py`);
+- `package.py` (364 lines), the sealed package;
+- `library.py` (281 lines), the saved library.
 
-- **Choosing an incident.** Choose from the registry's candidates: discovered, and not owned up to.
-  - Crimes come first: thefts, hit-and-runs, fights.
-  - Accidents stay out unless chosen on purpose. A fall becomes a case only when it is deliberately selected,
-    for instance one whose victim believes they were pushed; never automatically.
-- **Evidence and records.** What the investigator can find when the case starts:
-  - the traces still there: forced doors, blood, debris, scrap, and stashes found only by searching;
-  - the records: the ledger, the pub's tabs, the clinic log and the workshop orders;
-  - for each, whether it is connected to the case, unrelated or uncertain, and where any money came from.
-- **Testimony from beliefs, never from the truth.** Each resident's accounts carry their source, how sure they
-  are and the developer-only errors (lies, mistakes, drifted times). The simulation already keeps all of this
-  provenance.
-- **Validation.**
-  - Suitability verdicts (obvious, playable, ambiguous, unsolvable), judged by independent channels.
-  - The spoiler boundary: a case never reveals what no resident knows or could find.
-  - The existing case-format validator.
-- **Saved case generation.** Packages are written in the existing case format and loaded by the existing
-  loader, so saves, the bundled library and imported cases keep working.
+**Choose.**
+- Only eligible candidates, with someone genuinely responsible for a crime.
+- Prefer cases whose material passes the solvability guarantee below.
+- Never an accident, a bookkeeping mistake or a suspicion. A fall could be offered only as a deliberate "was it
+  an accident?" mystery, if one is ever wanted, and never automatically.
 
-**Verification:**
-- Every generated case loads and validates in the existing Godot loader and validator, and plays through the
-  existing end-to-end tests.
-- Every testimony line traces back to a belief, and every belief to its source.
-- No accident becomes a case unless selected.
-- Pinned case packages (digests) are reproduced on Windows and Linux.
-- **Compared with Python** statistically, not event by event (the random draws differ): which incidents are
-  chosen, how many channels each case has, the spread of verdicts, and how much testimony there is.
+**Judge** by independent channels that are reachable at the case start (Python's `evaluate`):
+- separate witnesses (hearsay counted by its root, not by how many repeat it);
+- physical traces the investigator may look at;
+- record lines in books they may read;
+- contradictions that expose a lie.
 
-**Untouched:** difficulty settings and the UI.
+Verdicts: obvious, playable, ambiguous or unsolvable.
+
+**Guarantee solvability by construction, not by statistics.** A case ships only if the answer can be worked out
+from the investigation view alone:
+- **Two independent channels at least**, both pointing at the responsible person (or one strong channel and an
+  exposed lie). Each must be reachable at the case start: an open or guarded statement (never a withheld one), a
+  trace on view, a line in a book the owner lets the investigator read. And each must be accurate, by the sealed
+  audit.
+- **Every element of the answer reachable.** The mechanism, the responsible person, and at least one accepted
+  motive each need a supporting item the player can reach.
+- **A truth-blind solver.** Pilot 4B should add an automated investigator that reads only the investigation view
+  (never the truth) and uses the existing Godot rules engine (`scripts/core/`) and its deduction routes. It must
+  reach the sealed answer, and the test must also show it cannot reach a wrong one with equal support.
+- **Misleading material stays honest.** Wrong suspicions, misidentifications and lies remain, as they arose, but
+  every lie that matters must be exposable by something reachable (Python's `exposed_lies`).
+- **Package and validate.** Write the existing case format (`docs/case-format.md`), seal the truth and the
+  per-item relevance verdicts as `package.py` does, and validate with the existing Godot loader and validator.
+  Play each case through the existing end-to-end tests (spoiler boundary, saves). Pin package digests on Windows
+  and Linux.
+
+**Saved case generation.**
+- Generate cases from seeds and keep them in a library.
+- Saves, the bundled Python-made library and imported cases keep working unchanged.
+
+**Compare with Python:**
+- the spread of verdicts;
+- channels per case;
+- how many candidates become playable cases.
+
+**Untouched:** the New Case menu and progress bar, difficulty settings, and the investigation UI.

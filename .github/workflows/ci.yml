@@ -237,11 +237,11 @@ jobs:
           fi
           test "$code" = "0"
 
-      - name: Simulate a month of crime headlessly (theft, fights, falls, collisions and what follows; native Godot)
+      - name: Simulate a month of crime headlessly, and extract its case candidates (native Godot)
         run: |
           set +e
           timeout -k 10 300 "$GODOT" --headless --path godot -s res://tests/run_sim.gd -- \
-            --seed=1 --days=30 --profile=tension --crime --out="$PWD/sim-demo" > sim-demo/run-crime.log 2>&1
+            --seed=1 --days=30 --profile=tension --crime --cases --out="$PWD/sim-demo" > sim-demo/run-crime.log 2>&1
           code=$?
           set -e
           cat sim-demo/run-crime.log

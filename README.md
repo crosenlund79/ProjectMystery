@@ -78,6 +78,9 @@ The town simulation is moving into Godot as well, with no Python at all. It live
 - Pilot 3B: violence and accidents: fights, injuries and rare deaths, drunken falls, collisions on Mill Road,
   vehicle damage, the clinic and the workshop, people found hurt or missed, and what each person saw, was told,
   or got wrong about it.
+- Pilot 4A: case extraction: testimony from each resident's own beliefs (with their mistakes, loyalties and
+  lies), the traces and records an investigator can reach, and the sealed truth, all taken from Godot's own
+  simulated history (`godot/scripts/cases/`). Packaging playable cases is the next pilot.
 
 The crime layer (pilots 3A and 3B) is behind a `crime` switch, off by default; `"violence": false` keeps only
 pilot 3A. One rule differs from Python on purpose: shop workers may serve themselves when nobody else is serving,
@@ -97,6 +100,9 @@ against what the town believes (add `--violence=off` for thefts only):
 ```bash
 godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --profile=tension --crime
 ```
+
+Add `--cases` to freeze every case candidate at the moment an investigator would arrive, see what they would
+meet, and (with `--out=<folder>`) write each case's investigation and sealed truth as JSON.
 
 ## The Python laboratory
 

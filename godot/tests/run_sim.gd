@@ -1,13 +1,16 @@
 ## Headless demonstration of the native town simulation (no Python, no rendering, no network):
 ##   godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --profile=normal
-##       [--residents=10] [--memory=off] [--crime] [--violence=off] [--shop-self-service=off] [--out=<folder>] [--golden]
+##       [--residents=10] [--memory=off] [--crime] [--violence=off] [--shop-self-service=off] [--cases] [--out=<folder>]
+##       [--golden]
 ## Prints the town, its people, the first day hour by hour, a line per day, the end state, the integrity
 ## checks and the event-log digest; --out writes the whole history as JSON; --golden checks the pinned
 ## digests in tests/sim_golden.json (the same check the Windows tests make); --crime turns on the whole crime layer
 ## (theft and financial incidents, Pilot 3A; fights, falls, collisions and what follows, Pilot 3B; --violence=off
 ## leaves out the latter) and prints what really happened against what the town came to believe.
-## --shop-self-service=off runs Python's shop rule, without the grocery deadlock fix. Exit code 0 only if every check
-## passed.
+## --shop-self-service=off runs Python's shop rule, without the grocery deadlock fix. --cases (Pilot 4A) freezes every
+## case candidate at its case start (scripts/cases/), prints what the investigator would meet and whether a playable
+## mystery could ever be made of it, and with --out writes each case's investigation and sealed truth as JSON. Exit
+## code 0 only if every check passed.
 extends SceneTree
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -15,6 +18,9 @@ const SimCheck = preload("res://scripts/sim/sim_check.gd")
 const SimClock = preload("res://scripts/sim/sim_clock.gd")
 const TestSim = preload("res://tests/test_sim.gd")
 const Memory = preload("res://scripts/sim/sim_memory.gd")
+const Incidents = preload("res://scripts/sim/sim_incidents.gd")
+const CaseBuilder = preload("res://scripts/cases/case_builder.gd")
+const CaseExtract = preload("res://scripts/cases/case_extract.gd")
 
 const DAY := 1440
 
@@ -23,6 +29,7 @@ func _initialize() -> void:
 	var cfg := {"seed": 7, "days": 14, "profile": "normal", "residents": 10}
 	var out := ""
 	var golden := false
+	var with_cases := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--seed="):
 			cfg["seed"] = int(a.substr(7))
@@ -44,6 +51,8 @@ func _initialize() -> void:
 			cfg["violence"] = false
 		elif a == "--shop-self-service=off":
 			cfg["shop_self_service"] = false
+		elif a == "--cases":
+			with_cases = true
 	for path in TestSim.SCRIPTS:
 		var script = load(path)
 		if script == null or not script.can_instantiate():
@@ -59,7 +68,19 @@ func _initialize() -> void:
 	_town(sim)
 	sim.run(DAY)
 	_first_day(sim)
-	sim.run()
+	var cases := {}
+	var case_problems := {}
+	if with_cases:
+		# step through the rest of the run, freezing each case candidate at its case start (as CaseExtract.collect)
+		var end: int = int(sim.config["days"]) * DAY
+		while sim.t < end:
+			sim.step()
+			for inc in sim.incidents:
+				if inc["case_start"] == sim.t and Incidents.is_candidate(inc):
+					cases[inc["id"]] = CaseBuilder.new(sim, inc).build()
+					case_problems[inc["id"]] = CaseExtract.provenance_problems(sim, cases[inc["id"]])
+	else:
+		sim.run()
 	var ms := Time.get_ticks_msec() - started
 	_days(sim)
 	_end_state(sim)
@@ -74,6 +95,10 @@ func _initialize() -> void:
 		print("  - " + str(p))
 	print("Event log: %d events, SHA-256 %s" % [sim.events.events.size(), sim.events.digest()])
 	print("Simulated %d days in %d ms on %s (%s)." % [cfg["days"], ms, OS.get_name(), Engine.get_version_info()["string"]])
+	if with_cases:
+		_cases(sim, cases, case_problems, out)
+		for iid in case_problems:
+			problems.append_array(case_problems[iid])
 	if out != "":
 		_export(sim, out)
 	var ok := problems.is_empty()
@@ -342,3 +367,58 @@ func _check_golden() -> bool:
 		ok = ok and same
 		print("Golden %s: %s" % [key, "same as pinned" if same else "DIFFERS (%s)" % digest])
 	return ok
+
+
+func _cases(sim, cases: Dictionary, problems: Dictionary, out: String) -> void:
+	## Each case candidate as the investigator would meet it, and whether a playable mystery could ever be made of it.
+	print("\nCase candidates, frozen at their case starts (Pilot 4A; the truth is sealed, shown here for developers):")
+	if cases.is_empty():
+		print("  none")
+	var ids: Array = cases.keys()
+	ids.sort_custom(func(x, y): return int(String(x).substr(1)) < int(String(y).substr(1)))
+	for iid in ids:
+		var c: Dictionary = cases[iid]
+		var inv: Dictionary = c["investigation"]
+		var truth: Dictionary = c["truth"]
+		var audit: Dictionary = truth["testimony_audit"]
+		var statements := 0
+		var guarded := 0
+		var mistaken := 0
+		var lies := 0
+		for rid in inv["testimony"]:
+			for it in inv["testimony"][rid]["items"]:
+				statements += 1
+				guarded += 1 if it["guarded"] else 0
+				var a: Dictionary = audit[it["key"]]
+				mistaken += 1 if a["status"] == "mistaken" else 0
+				lies += 1 if a.get("lie", false) else 0
+		var withheld := 0
+		for k in audit:
+			withheld += 1 if String(k).begins_with("W-") else 0
+		var on_view := 0
+		var refused := 0
+		for tid in truth["evidence_audit"]:
+			if truth["evidence_audit"][tid]["visible"]:
+				on_view += 1
+			else:
+				refused += 1
+		print("  %s %s, from %s: \"%s\" — %s" % [iid, truth["incident"]["family"], inv["start_label"], inv["hook"]["title"],
+				inv["hook"]["text"]])
+		print("      %s: %s" % ["could be playable" if c["eligibility"]["eligible"] else "never playable",
+				c["eligibility"]["reason"]])
+		print("      %d statements (%d guarded, %d mistaken, %d lies), %d things withheld; %d traces on view, %d behind a refusal; %d record lines" % [
+				statements, guarded, mistaken, lies, withheld, on_view, refused, truth["record_audit"].size()])
+		var culprit = truth["answer"]["responsible"]
+		if culprit != null and inv["testimony"].has(culprit):
+			for it in inv["testimony"][culprit]["items"]:
+				if "whereabouts" in it["topics"] and not it.has("in"):
+					print("      %s says: %s   [sealed: %s]" % [sim.n(culprit), it["text"], audit[it["key"]]["status"]])
+		print("      sealed: %s" % truth["narrative"])
+		print("      provenance and spoiler checks: %s" % ("all passed" if problems[iid].is_empty()
+				else "%d PROBLEMS, first: %s" % [problems[iid].size(), problems[iid][0]]))
+		if out != "":
+			DirAccess.make_dir_recursive_absolute(out)
+			for view in ["investigation", "truth"]:
+				var f := FileAccess.open(out.path_join("case-%s-%s.json" % [c["case_id"], view]), FileAccess.WRITE)
+				f.store_string(JSON.stringify(c[view], " ", true))
+				f.close()
