@@ -1,0 +1,15 @@
+{
+ "seed 1, tension, 30 days, crime": {
+  "godot-1-tension-30d-r10-I1": "635b79800bbd17e2775a51243fdf2c7a32a33813f73f061593a20412025b429e",
+  "godot-1-tension-30d-r10-I2": "bc361b373be2946d67ae49a82e29643ce04f156d8eaa49e7bfd65904effb4325",
+  "godot-1-tension-30d-r10-I3": "3163b93ad265d739a0767b2289376da9be7fdce6d09b4b21a64a92c33cf7fda0",
+  "godot-1-tension-30d-r10-I4": "6901a7abe3ccdfe11ec4695ddcffa60ec5cc093dbcf55047bc5395e72c9261b3",
+  "godot-1-tension-30d-r10-I5": "80afeb3e8188d1cdb18eea0aad686060ccbe7aa19841a317bfb71dcdcd4ee252",
+  "godot-1-tension-30d-r10-I6": "9a2b64b0140babb29d3c7f5ae56d5f282642f6a732375b2bbce82eb878c466a9"
+ },
+ "seed 2, tension, 30 days, crime": {
+  "godot-2-tension-30d-r10-I1": "9dd82e5cb51a514b3e318adc9df716dbd77e5aa4c7b6080abc319a07253af6f6",
+  "godot-2-tension-30d-r10-I2": "7a717bf54217643be4d1b5c4b832e2b2dab4a8a733deb4d4c85b6e4fd8610701",
+  "godot-2-tension-30d-r10-I3": "4fdf7c03c99d243ba4008dae1480407e2d052f1c0629b6f6817c1ae846750ddd"
+ }
+}

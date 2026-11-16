@@ -5,7 +5,8 @@
 ## more), misleading and contradicting testimony, two suspects as likely as each other. Then the package format: the
 ## seal and the relevance verdicts open as the game opens them, the file validates, carries no truth in the view, and
 ## the same month gives the same bytes (pinned in tests/case_golden.json; the Linux job checks the same pins). Then
-## twenty months with the whole crime layer: every candidate judged; generation yield and the rejection reasons;
+## forty months with the whole crime layer (as many as Python's reference): every candidate judged; generation yield
+## and the rejection reasons; the sealed suitability report beside Python's (tests/case_reference.json);
 ## quality concerns; and every case that passes is found by the case library, played, saved, resumed and revealed
 ## through the game's own investigation engine, with the bundled cases, imported cases and saves left as they were.
 extends RefCounted
@@ -24,10 +25,11 @@ const TestSim = preload("res://tests/test_sim.gd")
 const SCRIPTS := ["res://scripts/cases/case_suitability.gd", "res://scripts/cases/case_package.gd",
 		"res://scripts/cases/case_solver.gd", "res://scripts/cases/case_generate.gd"]
 const PROFILES := ["normal", "scarcity", "crisis", "tension"]
-const SEEDS := [1, 2, 3, 4, 5]
+const SEEDS := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 const DAYS := 30
 const ROOT := "user://test_generation/"
 const GOLDEN := "res://tests/case_golden.json"
+const REFERENCE := "res://tests/case_reference.json"
 ## The months whose every package is pinned, byte for byte (the Linux job generates the first of them too).
 const GOLDEN_RUNS := [{"seed": 1, "days": 30, "profile": "tension"}, {"seed": 2, "days": 30, "profile": "tension"}]
 
@@ -361,7 +363,8 @@ func _determinism(t) -> void:
 	t.end()
 
 
-# ================================================================ twenty months
+# ================================================================ forty months
+## Forty months; the survey's cases go into a case library of their own (ROOT), never the player's.
 func _survey() -> Array:
 	var out := []
 	var cases_dir := ROOT + "cases/"
@@ -405,11 +408,20 @@ func _yield(t, months: Array) -> void:
 	for f in fams:
 		var b: Dictionary = y["by_family"][f]
 		print("  YIELD %-17s %3d candidates, %3d eligible, %3d solvable" % [f, b["candidates"], b["eligible"], b["solvable"]])
-	for group in ["ineligible", "rejections", "concerns"]:
+	for group in ["ineligible", "rejections", "sealed_routes_of_rejected", "concerns"]:
 		var keys: Array = y[group].keys()
 		keys.sort_custom(func(a, b): return y[group][a] > y[group][b] or (y[group][a] == y[group][b] and a < b))
 		for k in keys:
 			print("  YIELD %s: %3d  %s" % [group, y[group][k], k])
+	# the sealed suitability report (the port of Python's) beside Python's own, for reference
+	var mine := CaseGenerate.suitability_stats(_results(months), months.size())
+	var ref = JSON.parse_string(FileAccess.get_file_as_string(REFERENCE))
+	var theirs: Dictionary = ref.get("suitability", {}) if ref is Dictionary else {}
+	t.check(not theirs.is_empty(), "no suitability reference in " + REFERENCE)
+	var keys: Array = theirs.keys()
+	keys.sort()
+	for k in keys:
+		print("  suitability-vs-python %-34s godot %8.4f  python %8.4f" % [k, float(mine.get(k, -1.0)), float(theirs[k])])
 	t.check(y["solvable"] >= 1, "not one playable case in %d months" % y["months"])
 	t.eq(y["false_accusations"], 0, "cases where the truth-blind investigator would accuse an innocent person")
 	t.eq(y["candidates"], y["solvable"] + y["rejected"], "every candidate accepted or rejected")

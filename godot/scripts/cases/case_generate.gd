@@ -68,7 +68,7 @@ static func judge(case_: Dictionary, out_dir := "", all_dir := "") -> Dictionary
 	var r := {"case_id": case_["case_id"], "incident": inc["id"], "family": inc["family"], "title": inv["hook"]["title"],
 			"eligible": el["eligible"], "eligibility": el["reason"], "verdict": truth["suitability"]["verdict"],
 			"accepted": false, "stage": "", "reason": "", "solver": {}, "check": {}, "quality": {}, "package_sha256": "",
-			"bytes": 0, "path": "", "false_accusation": false}
+			"bytes": 0, "path": "", "false_accusation": false, "suitability": _report_summary(truth["suitability"])}
 	# the package, read back exactly as a player's game reads a case file
 	var file_text := CasePackage.to_text(CasePackage.build(case_))
 	r["package_sha256"] = file_text.sha256_text()
@@ -130,6 +130,15 @@ static func judge(case_: Dictionary, out_dir := "", all_dir := "") -> Dictionary
 	if out_dir != "":
 		r["path"] = CasePackage.write(file_text, pkg["case_id"], out_dir)
 	return r
+
+
+static func _report_summary(report: Dictionary) -> Dictionary:
+	## The sealed suitability report, in short (developer-only: it is worked out from the truth).
+	var out := {}
+	for k in ["verdict", "deduction", "solvable_by_evidence", "independent_channels", "responsible_channels",
+			"blocked_channels", "red_herrings", "lies_by_responsible"]:
+		out[k] = report[k]
+	return out
 
 
 static func _reject(r: Dictionary, stage: String, reason: String) -> Dictionary:
@@ -258,7 +267,8 @@ static func playthrough(path: String, user_root: String) -> Dictionary:
 # ================================================================ yield
 static func yield_report(results: Array, months: int) -> Dictionary:
 	var out := {"months": months, "candidates": results.size(), "eligible": 0, "solvable": 0, "rejected": 0,
-			"false_accusations": 0, "by_family": {}, "rejections": {}, "ineligible": {}, "concerns": {}}
+			"false_accusations": 0, "by_family": {}, "rejections": {}, "ineligible": {}, "concerns": {},
+			"sealed_routes_of_rejected": {}}
 	for r in results:
 		var fam: String = r["family"]
 		if not out["by_family"].has(fam):
@@ -288,4 +298,38 @@ static func yield_report(results: Array, months: int) -> Dictionary:
 			elif key.begins_with("more than one person is tied to the"):
 				key = "more than one person is tied to the damaged vehicle"
 			out["rejections"][key] = int(out["rejections"].get(key, 0)) + 1
+			# what the sealed report (worked out from the truth) says of a case the investigator could not solve
+			var routes: Array = r["suitability"]["deduction"]
+			var rk: String = "no route even with the truth" if routes.is_empty() else "sealed route: " + ", ".join(PackedStringArray(routes))
+			out["sealed_routes_of_rejected"][rk] = int(out["sealed_routes_of_rejected"].get(rk, 0)) + 1
+	return out
+
+
+static func suitability_stats(results: Array, months: int) -> Dictionary:
+	## The sealed suitability report over the eligible cases, as tools/case_reference.py measures Python's.
+	var reports := []
+	for r in results:
+		if r["eligible"]:
+			reports.append(r["suitability"])
+	var n := float(maxi(1, reports.size()))
+	var out := {"eligible": float(reports.size()), "per_month.eligible": reports.size() / float(maxi(1, months))}
+	for v in ["obvious", "playable", "ambiguous", "unsolvable"]:
+		var c := 0
+		for rp in reports:
+			c += 1 if rp["verdict"] == v else 0
+		out["share.verdict." + v] = c / n
+	for route in ["contradiction", "eyewitness", "opportunity", "physical", "documentary"]:
+		var c := 0
+		for rp in reports:
+			c += 1 if route in rp["deduction"] else 0
+		out["share.route." + route] = c / n
+	var solvable := 0
+	for rp in reports:
+		solvable += 1 if rp["solvable_by_evidence"] else 0
+	out["share.solvable_by_evidence"] = solvable / n
+	for k in ["independent_channels", "responsible_channels", "blocked_channels", "red_herrings", "lies_by_responsible"]:
+		var total := 0.0
+		for rp in reports:
+			total += float(rp[k])
+		out["per_case." + k] = total / n
 	return out

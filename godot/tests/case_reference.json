@@ -70,6 +70,25 @@
   9,
   10
  ],
+ "suitability": {
+  "eligible": 77.0,
+  "per_case.blocked_channels": 0.93506,
+  "per_case.independent_channels": 2.49351,
+  "per_case.lies_by_responsible": 0.7013,
+  "per_case.red_herrings": 5.14286,
+  "per_case.responsible_channels": 1.75325,
+  "per_month.eligible": 1.925,
+  "share.route.contradiction": 0.19481,
+  "share.route.documentary": 0.06494,
+  "share.route.eyewitness": 0.09091,
+  "share.route.opportunity": 0.0,
+  "share.route.physical": 0.05195,
+  "share.solvable_by_evidence": 0.27273,
+  "share.verdict.ambiguous": 0.50649,
+  "share.verdict.obvious": 0.02597,
+  "share.verdict.playable": 0.15584,
+  "share.verdict.unsolvable": 0.31169
+ },
  "theft": {
   "cases": 69.0,
   "per_case.evasive": 4.63768,

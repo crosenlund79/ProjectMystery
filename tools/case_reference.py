@@ -7,7 +7,9 @@ case candidate at its case start with mystery/cases/export.py (build_case, throu
 cases exactly as godot/scripts/cases/case_extract.gd (stats) measures the Godot ones: how many candidates there are
 and of which families, what each case holds (statements, summaries, lies, things withheld or guarded, traces,
 records, refusals), where statements come from and how accurate they are, which ones support or mislead, and the
-relevance verdicts. The suitability verdicts and hints are left out (Pilot 4B). Python is not changed.
+relevance verdicts. For the eligible cases it also measures Python's suitability report (mystery/cases/suitability.py:
+verdicts, deduction routes, channels), as godot/scripts/cases/case_generate.gd (suitability_stats) measures the Godot
+port's, for Pilot 4B. Python is not changed.
 """
 
 from __future__ import annotations
@@ -110,6 +112,25 @@ def stats(cases: list[dict], months: int) -> dict:
     return {k: round(v, 5) for k, v in sorted(out.items())}
 
 
+VERDICTS_SUIT = ["obvious", "playable", "ambiguous", "unsolvable"]
+ROUTES = ["contradiction", "eyewitness", "opportunity", "physical", "documentary"]
+
+
+def suitability_stats(cases: list[dict], months: int) -> dict:
+    """Python's suitability report over the eligible cases (godot/scripts/cases/case_generate.gd, suitability_stats)."""
+    reports = [c["suitability"] for c in cases if eligible(c["truth"]["incident"])]
+    n = len(reports)
+    out: dict[str, float] = {"eligible": float(n), "per_month.eligible": n / max(1, months)}
+    for v in VERDICTS_SUIT:
+        out[f"share.verdict.{v}"] = sum(1 for r in reports if r["verdict"] == v) / max(1, n)
+    for route in ROUTES:
+        out[f"share.route.{route}"] = sum(1 for r in reports if route in r["deduction"]) / max(1, n)
+    out["share.solvable_by_evidence"] = sum(1 for r in reports if r["solvable_by_evidence"]) / max(1, n)
+    for k in ("independent_channels", "responsible_channels", "blocked_channels", "red_herrings", "lies_by_responsible"):
+        out[f"per_case.{k}"] = sum(r[k] for r in reports) / max(1, n)
+    return {k: round(v, 5) for k, v in sorted(out.items())}
+
+
 def main() -> None:
     cases: list[dict] = []
     for profile in PROFILES:
@@ -121,13 +142,16 @@ def main() -> None:
     months = len(PROFILES) * len(SEEDS)
     result = {"generated_by": "tools/case_reference.py", "days": DAYS, "seeds": SEEDS, "profiles": PROFILES,
               "residents": 10, "months": months, "all": stats(cases, months),
-              "theft": stats([c for c in cases if c["truth"]["incident"]["family"] == "theft"], months)}
+              "theft": stats([c for c in cases if c["truth"]["incident"]["family"] == "theft"], months),
+              "suitability": suitability_stats(cases, months)}
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=1, sort_keys=True)
         f.write("\n")
     print(f"wrote {os.path.relpath(OUT, ROOT)}: {len(cases)} cases in {months} months")
     for k, v in result["all"].items():
         print(f"  {k:40} {v}")
+    for k, v in result["suitability"].items():
+        print(f"  suitability {k:28} {v}")
 
 
 if __name__ == "__main__":
