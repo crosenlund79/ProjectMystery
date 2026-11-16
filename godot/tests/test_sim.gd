@@ -125,7 +125,11 @@ func _runs(seeds: Array, layer: String) -> Array:
 					{"off": "", "theft": ", crime on, violence off", "crime": ", crime on"}[layer], DAYS,
 					sim.events.events.size(), Time.get_ticks_msec() - started, detail])
 			if layer != "off" and sim.samples["hunger"] / maxf(1.0, float(sim.samples["hours"])) > 35:
-				print("  hungry month %s seed %d (%s): %s" % [profile, seed, layer, _hungry_month(sim)])
+				var plain = Simulation.new({"seed": seed, "days": DAYS, "profile": profile}).run()
+				print("  hungry month %s seed %d (%s): %s; the same town without crime: hunger %.0f, %d purchases" % [
+						profile, seed, layer, _hungry_month(sim),
+						plain.samples["hunger"] / maxf(1.0, float(plain.samples["hours"])),
+						plain.events.counts().get("purchase", 0)])
 			runs.append({"profile": profile, "seed": seed, "sim": sim, "crime": layer != "off", "layer": layer})
 	return runs
 
@@ -161,6 +165,9 @@ static func _hungry_month(sim) -> String:
 	var wallets := {}
 	for rid in sim.ids:
 		wallets["wallet:" + rid] = int(sim.initial_balances["wallet:" + rid]["cash"])
+	var hid: String = sim.residents[grocer].household
+	var pantry_acct := "box:pantry:" + hid
+	var larder: int = sim.initial_balances[pantry_acct]["food"]
 	var transfers: Array = sim.world.transfers
 	var i := 0
 	var days := PackedStringArray()
@@ -168,6 +175,11 @@ static func _hungry_month(sim) -> String:
 		var end: int = d * SimClock.DAY
 		while i < transfers.size() and int(transfers[i]["time"]) < end:
 			var tr: Dictionary = transfers[i]
+			if tr["asset"] == "food":
+				if tr["src"] == pantry_acct:
+					larder -= int(tr["amount"])
+				if tr["dst"] == pantry_acct:
+					larder += int(tr["amount"])
 			if tr["asset"] == "cash":
 				if wallets.has(tr["src"]):
 					wallets[tr["src"]] -= int(tr["amount"])
@@ -185,8 +197,13 @@ static func _hungry_month(sim) -> String:
 			for h in range(8, 18):
 				if sim.where(grocer, SimClock.at(d, h, 30)) == "grocery":
 					hours += 1
-		days.append("D%d %dp/%dg/%dw/%db" % [d, int(bought.get(d, 0)), hours, total / maxi(1, wallets.size()), broke])
-	return "%s; the grocer otherwise: %s" % [" ".join(days), JSON.stringify(doing)]
+		days.append("D%d %dp/%dg/%dw/%db/%df" % [d, int(bought.get(d, 0)), hours, total / maxi(1, wallets.size()), broke,
+				larder])
+	var family := PackedStringArray()
+	for m in sim.households[hid]:
+		family.append("%s %s" % [m, sim.residents[m].role])
+	return "%s; the grocer otherwise: %s; grocer's household %s (f = its pantry), diligence %.2f" % [" ".join(days),
+			JSON.stringify(doing), ", ".join(family), sim.residents[grocer].traits["diligence"]]
 
 
 static func _fled(sim) -> int:
