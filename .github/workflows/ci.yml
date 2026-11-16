@@ -39,6 +39,11 @@ jobs:
         run: |
           python tools/sim_reference.py
           git diff --exit-code godot/tests/sim_reference.json godot/tests/sim_reference_theft.json godot/tests/sim_reference_crime.json
+      - name: The case-extraction reference statistics regenerate identically
+        if: runner.os == 'Linux'
+        run: |
+          python tools/case_reference.py
+          git diff --exit-code godot/tests/case_reference.json
 
   godot:
     name: Godot game - tests, Windows export, smoke test
@@ -151,7 +156,7 @@ jobs:
       - name: Simulation summary (repeated from the test log so it is easy to find)
         if: always()
         shell: bash
-        run: grep -E "simulated |sim-vs-python|theft-vs-python|crime-vs-python|whole months|GOLDEN|^== test_(sim|memory|crime|violence)|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
+        run: grep -E "simulated |sim-vs-python|theft-vs-python|crime-vs-python|whole months|GOLDEN|^== test_(sim|memory|crime|violence|grocery|extraction)|extracted |provenance checked|candidates: |testimony: |traces: |undiscovered incidents|EXAMPLE|cases-vs-python|checks passed|GODOT TESTS|FAIL " godot-tests.log || echo "no simulation lines in the test log"
 
   screens:
     name: Godot game - screenshots and web build (Linux)
