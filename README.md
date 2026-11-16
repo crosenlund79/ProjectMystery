@@ -93,7 +93,7 @@ A month of hard times with the crime layer on, with the truth about each theft, 
 against what the town believes (add `--violence=off` for thefts only):
 
 ```bash
-godot --headless --path godot -s res://tests/run_sim.gd -- --seed=21 --days=30 --profile=tension --crime
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --profile=tension --crime
 ```
 
 ## The Python laboratory

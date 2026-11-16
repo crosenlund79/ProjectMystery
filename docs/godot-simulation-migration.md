@@ -1,12 +1,16 @@
 # Moving the town simulation to Godot
 
 The goal is a self-contained Godot 4 game in which the town simulation, case generation and the investigation
-all run natively, with Python retired from the active architecture. This document covers three pilots:
+all run natively, with Python retired from the active architecture. This document covers four pilots:
 
 - **Pilot 1:** residents living in a town.
 - **Pilot 2:** what they see, hear, remember and tell each other.
 - **Pilot 3A:** theft and financial incidents: who steals, how it is hidden, how it is found, what traces it
   leaves, and whom the town suspects.
+- **Pilot 3B:** violence and accidents: fights, falls and collisions on Mill Road, and what follows them:
+  injuries and the clinic, damaged vehicles and the workshop, people found hurt, missed or dead.
+
+With pilot 3B, the whole Python simulation runs natively in Godot.
 
 The existing game is unchanged: cases are made by Python and played in Godot.
 
@@ -88,17 +92,44 @@ is refused.
 - A theft too small to notice, or from a tin nobody opens, stays undiscovered and unknown to everyone but the
   thief.
 
+## What pilot 3B adds: violence and accidents
+
+`"crime": true` now turns on the whole crime layer. `"violence": false` turns off just this pilot and runs
+pilot 3A exactly: its three pinned histories are reproduced unchanged with that setting. With crime off,
+`violence` does nothing, and the six Pilot 1 and 2 histories are unchanged as well.
+
+| Python (`mystery/`) | Godot (`godot/scripts/sim/`) | What it does |
+| --- | --- | --- |
+| `sim/actions.py` (`confront`, `assault`) | `sim_actions.gd` (`confront`), `sim_violence.gd` (`assault`) | **Fights.** An argument that would turn violent (impulsiveness, drink and resentment) now does, instead of being counted as `escalations_deferred`. The injury is minor, serious (25%), or rarely fatal (1.5% plus up to 2% for drink). Each bystander steps in half the time, and then nobody is badly hurt. Everyone there sees it; next door hears a scuffle. A serious fight leaves blood; a fatal one leaves a body. It is registered as an assault, with the aggressor responsible and a motive (a grudge, drink, or money), and is known at once to the victim (or, if they die, to a witness). The victim resents and distrusts the aggressor, and both keep away from each other for two weeks. |
+| `sim/actions.py` (`check_collision`) | `sim_violence.gd` (`check_collision`) | **Collisions.** A driver crossing Mill Road hits something with a chance of 0.04% by day and 0.3% after dark, plus up to 4% (12% after dark) for drink. Six times in ten a walker on the road at that moment is hit (a minor, serious or, 8% of the time, fatal injury); otherwise the white fence. Damage to the vehicle and debris on the road are traces, and anyone near sees or hears it. The driver either stops and owns up, or drives on. Stopping is more likely if they are honest, kind and sober. Owned up to, it is reported openly: an accident, never a case candidate. Driven on from, the driver is guilty and wants the damage mended quietly. A walker hit and left lies on the road if seriously hurt. |
+| `sim/actions.py` (`check_fall`) | `sim_violence.gd` (`check_fall`) | **Falls.** Someone very drunk (intoxication 50 or more) walking Mill Road after dark may fall into the ditch: hurt (30% of the time seriously, and then lying there), with scuff marks on the bank. An accident, nobody's doing. What they remember depends on how drunk they were: that they slipped, nothing at all, or (very drunk) that someone they resent and saw that evening pushed them, which is a mistaken inference. |
+| `sim/engine.py` (needs, `truncate`), `sim/decisions.py` | `simulation.gd`, `sim_decisions.gd` | **Being hurt.** An injury heals in two days (minor) or six (serious). The injured sleep and rest more, and the seriously hurt do not go to work. Someone lying "down" goes nowhere and grows more stressed. The dead neither move nor act. |
+| `sim/actions.py` (`notice_injury`, `patient_account`) | `sim_violence.gd` (`injuries_noticed`, `notice_injury`, `patient_account`) | **What the hurt say.** At the end of each hour, people in the same place notice who is hurt and hear their account. The account comes from the victim's own belief: the truth, a mistake (the drunk who blames someone), or a lie (someone fond of whoever hit them "walked into a door"). |
+| `sim/engine.py` (found and missed people), `sim/actions.py` (`found`) | `sim_violence.gd` (`found_checks`, `found`, `missed_people`), `sim_crime.gd` (`tidy_evidence`) | **Found, missed, buried.** Someone lying hurt or dead is found by the first person awake to come by, never by whoever did it. The finder raises the alarm and takes them to the clinic or home. Someone hurt whom nobody has found by mid-morning manages home alone. Someone who died unseen is missed after half a day (between 8:00 and 18:00) by whoever is fondest of them, who goes to check on them. A body that has been found is buried three days later. |
+| `sim/actions.py` (`clinic`, `repair`) | `sim_violence.gd` (`clinic`, `repair`), `sim_decisions.gd` | **The clinic and the workshop.** The injured go to the clinic when it is open. The nurse treats them, sees the injury, and writes what they say in the clinic log. A driver with a damaged vehicle has it mended at the workshop, sooner if guilty. The mechanic writes down the driver's explanation; a driver who drove on lies ("Hit a deer out on the ridge road"). The damage is gone, and the old parts lie in the scrap pile, a new trace. |
+| `sim/actions.py` (`notice`), `sim/engine.py` (`_notice_evidence`) | `sim_crime.gd` (`notice`, `notice_evidence`) | **Traces of harm.** Blood, debris on the road and a damaged vehicle are noticed the way a forced door is. Noticing one is a belief about damage, which the suspicion machinery of pilots 2 and 3A works on. Debris from a collision nobody owned up to brings the incident to light. |
+| `sim/incidents.py` | `sim_incidents.gd` | **Three more incident families:** assault, collision and fall. Each records who was responsible (nobody, for a fall), the victims, whether a driver drove on, and whether it was owned up to on the spot. |
+
+**Truth stays separate from belief.**
+- A driver who drove on knows what they hit (`collision_self`) and keeps it to themselves. A driver who owned up
+  talks about it.
+- Whoever was struck knows only "a vehicle" (or what kind), unless the driver stopped.
+- An injury is known only by those who took part, saw or heard it, found the person, treated them, or were told.
+- A patient's account may be mistaken or a lie. Both are marked for developers only (`mistaken_inference`,
+  `lie`); whoever hears the account does not know.
+- A carer who misses someone knows when they themselves last saw them, not when the person died.
+
+**Accidents are not cases.** Falls and collisions happen, and are registered like any incident. A collision
+owned up to on the spot is reported openly and is never a case candidate. A fall becomes a candidate in the
+registry once someone finds out about it, exactly as in Python. Nothing in the simulation makes a case: that is
+for the case-generation pilot to decide (see [Next](#next-pilot-4-evidence-case-validation-and-saved-case-generation)).
+
 ## What waits for later pilots
 
-These are the boundaries. Each later layer plugs into the event log, presence intervals, debts, records, money
-transfers, beliefs, traces and incidents that pilots 1 to 3A already keep.
+These are the boundaries. The next layer plugs into the event log, presence intervals, debts, records, money
+transfers, beliefs, traces and incidents that pilots 1 to 3B keep.
 
-- **Violence and accidents (Pilot 3B):** assault, injuries and the clinic, falls, collisions on Mill Road, vehicle
-  damage and repairs, people found or missed, deaths.
-  - An argument that would turn violent still ends with the argument logged and counted as
-    `escalations_deferred`.
-  - See [Next: pilot 3B](#next-pilot-3b-violence-and-accidents).
-- **Testimony export, suitability and case packaging** (`mystery/cases`).
+- **Evidence, testimony export, case validation and packaging** (`mystery/cases`): pilot 4.
 - **The investigation rules** already run in Godot (`scripts/core/`) and are untouched.
 
 ## Determinism
@@ -108,7 +139,7 @@ global random generator, no iteration over unordered collections and no transcen
 same seed and settings twice gives an identical event-log digest; the tests check this, and CI compares the
 digests produced on Windows and Linux.
 
-Nine histories are pinned in `godot/tests/sim_golden.json`. Both the Windows tests and the Linux demo must
+Twelve histories are pinned in `godot/tests/sim_golden.json`. Both the Windows tests and the Linux demo must
 reproduce them:
 
 - **Memory off:** Pilot 1's three histories (seed 7 normal, seed 21 tension, seed 5 crisis with 12
@@ -117,13 +148,20 @@ reproduce them:
 - **Memory on:** the same three runs with perception, memory and gossip. Their histories differ because gossip
   happens in chats, beliefs steer decisions, and the extra random draws shift later ones. They were pinned
   from the Windows run of commit 8d67289 and reproduced on Linux in CI run 29.
-- **Crime on:** a month in the tension season (seed 21), the scarcity season (seed 7) and the crisis season
-  (seed 5, 12 residents), long enough for thefts to happen in them: 4, 1 and 1 thefts, plus ledger mistakes,
-  discovered losses and traces. They were pinned from the Windows run of commit d885ed1, after Linux had
-  produced the same three digests, and both platforms reproduce them in CI run 33.
+- **Crime on, violence off:** Pilot 3A's months in the tension season (seed 21), the scarcity season (seed 7)
+  and the crisis season (seed 5, 12 residents), long enough for thefts to happen in them: 4, 1 and 1 thefts,
+  plus ledger mistakes, discovered losses and traces. They were pinned from the Windows run of commit d885ed1,
+  after Linux had produced the same three digests, and both platforms reproduced them in CI run 33. Since
+  pilot 3B they are run with `"violence": false`, and their digests are unchanged (CI runs 37 to 43).
+- **The whole crime layer:** a month in the tension season (seeds 1 and 3) and the crisis season (seed 1),
+  chosen because violence happens in them: seed 1 tension holds a fight, a fall and a hit-and-run with a quiet
+  repair; seed 3 tension a fall, whose victim is found lying hurt and treated; seed 1 crisis a fight, and the clinic. Pinned from the Windows runs in
+  CI runs 38 to 42, which all agree; Linux reproduces them in runs 42 and 43.
 
 The crime switch is off by default, and the six earlier histories are byte-for-byte unchanged by Pilot 3A
-(CI runs 32 and 33). That is the separate validation of this pilot's digest change.
+(CI runs 32 and 33). Pilot 3B draws random numbers only when violence is on, and what it adds to needs and
+decisions is zero for anyone unhurt, so the six crime-off and the three violence-off histories are unchanged by
+it (CI runs 37 to 43). That is the separate validation of each pilot's digest change.
 
 Python's random numbers are not reproduced. The two simulations follow the same rules with different random
 draws, so they are compared by their statistics, not event by event.
@@ -146,20 +184,21 @@ godot --headless --path godot -s res://tests/run_sim.gd -- --seed=7 --days=14 --
 
 With `--crime`, it also prints the truth about every incident, which no resident sees whole:
 - what happened, when, and whether and when it was discovered, and by whom;
-- how many people came to know of each loss;
+- how many people came to know of each theft, fight, fall or collision;
 - who suspected whom of it, marked right or wrong;
 - accusations, confessions, abandoned attempts and spending from hidden stashes;
-- every trace: where it was left, who noticed it, and when it was cleared away.
+- every trace: where it was left, who noticed it, and when it was cleared away, mended or buried;
+- who is hurt or dead at the end.
 
 ```bash
-godot --headless --path godot -s res://tests/run_sim.gd -- --seed=21 --days=30 --profile=tension --crime
+godot --headless --path godot -s res://tests/run_sim.gd -- --seed=1 --days=30 --profile=tension --crime
 ```
 
 **Options:**
 - `--out=<folder>` writes the whole history as JSON, with beliefs, incidents and traces.
-- `--golden` checks the nine pinned digests.
+- `--golden` checks the twelve pinned digests.
 - `--memory=off` runs pilot 1.
-- `--crime` turns on pilot 3A.
+- `--crime` turns on the whole crime layer (pilots 3A and 3B); `--violence=off` with it runs pilot 3A only.
 
 CI runs both commands on Linux and uploads the results as the `simulation-demo` artifact.
 
@@ -173,7 +212,8 @@ for b in sim.memory[sim.ids[0]].beliefs:
 
 ## How it is verified
 
-`godot/tests/test_sim.gd` and `godot/tests/test_memory.gd` are part of the Godot test run in CI.
+`godot/tests/test_sim.gd`, `test_memory.gd`, `test_crime.gd` and `test_violence.gd` are part of the Godot test
+run in CI.
 
 ### The world (pilot 1, and still with memory on)
 
@@ -259,12 +299,54 @@ days (4 seasons, 5 seeds), the three pinned crime months and the whole-month sce
 | Concealment | Before stealing, a resident mentions their own debt in conversation. Afterwards they keep quiet about themselves and the loot. Given the same knowledge of a loss, they do not hunt the culprit of their own theft; someone with nothing to hide does. |
 | Whole months | Three crime-on months: no rule broken; thefts happen; losses make people suspect one another. |
 
+### Violence and accidents (pilot 3B)
+
+**Integrity and provenance**, checked on every run with the whole crime layer (`sim_check.gd`, `_check_violence`
+and the extended `_check_crime`): 20 runs of 30 days (4 seasons, 5 seeds), the three pinned months and the
+scenario tests. The pilot 3A rules above still hold.
+
+| Rule | What is checked |
+| --- | --- |
+| The living and the dead | Whoever is dead died once, of a fight or a collision, and their body lies where they died. The dead neither move nor act afterwards. |
+| Injuries | Every injury names the event that caused it, and that event harmed that person. |
+| Fights | Each follows an argument between the two. A serious one left blood; a fatal one killed the victim. Each is registered as the aggressor's assault. |
+| Collisions | Each follows that driver's drive along Mill Road, in their household's vehicle, within the hour. Each left damage on the vehicle and debris on the road. The driver drove on exactly when they are guilty of it; one who stopped owned up, and the incident is reported openly. |
+| Falls | Each follows a walk along Mill Road, and is registered as nobody's doing. |
+| The clinic | Only the nurse treats, only at the clinic, and only a harm that befell the patient. |
+| Repairs | Each follows damage to that vehicle, happens at the workshop, and leaves scrap. |
+| Found, missed, buried | Whoever found someone was there at the time. Only the dead are missed. A burial follows a found body after three days. |
+| Vehicles | Replayed drive by drive: each drive starts where the last one ended, the last ends where the vehicle is, and only the household that owns the vehicle drives it. |
+| Traces and discovery | Damage on a vehicle is wherever the vehicle is. A trace disappears only when it is cleared away, buried or mended. An incident is discovered by someone who took part in it or perceived it, no earlier than it happened, and its window holds the harm. For the fence, whose damage may be found days later, only the end of the window is checked. |
+| Who knows what | Only the driver holds that they hit something; only the person struck, that they were struck. A patient's account is "told" by the patient, copied from their own belief, when they were found, treated or seen hurt. The mechanic's note of the explanation comes from the driver. A `lie` is only ever told; a `mistaken_inference` is only inferred or passed on. |
+| Switch | With violence off (and with crime off) there are no fights, interventions, deaths, collisions, falls, finds, treatments, repairs or burials at all, and nobody is hurt or dead. |
+
+**Scenarios** (`tests/test_violence.gd`), on a real town with people placed:
+
+| Test | What it shows |
+| --- | --- |
+| A fight | An argument turns into a fight: registered as the attacker's, after the argument. The witness in the room sees it; the square only hears a scuffle. Blood if it was serious; a body if it was fatal; otherwise the victim is hurt and untreated. The victim resents and distrusts the attacker. |
+| Peacemakers | With three bystanders, someone usually steps in, and then the injury is minor at most. |
+| Collisions | Across many towns, a drunk driver on Mill Road at night hits a walker or the fence. The damage and the debris are traces. The driver knows what they hit; whoever was struck knows it; another walker on the road sees it. A driver who drives on is guilty and wants the damage mended quietly. Someone seriously hurt is left lying on the road; someone with a minor injury walks on. A driver who stops owns up: an accident, out in the open, and the one struck knows who hit them. |
+| Falls | A drunk walker falls into the ditch: an accident, hurt, scuff marks on the bank, lying there if badly hurt. Exactly one memory of how it happened. Too drunk to know, they may blame someone they resent and saw that night: a mistaken inference. |
+| Found and treated | Someone lying hurt is found by the first person to come by and says they slipped into the ditch. The finder is told; the nurse treats them, sees the injury, hears the account and writes it down. |
+| Home alone | Nobody comes by: by mid-morning someone hurt manages home on their own. |
+| What the hurt say | An honest patient names who hit them; one fond of the attacker says they walked into a door (a lie). Either way the nurse sees the injury. |
+| Repairs | The workshop mends a damaged vehicle; the damage is gone and the old parts lie in the scrap pile. A driver who drove on tells the mechanic a lie (a deer on the ridge road); one who owned up tells the truth. |
+| A death | Not missed before half a day has passed; then missed by whoever is fondest of them, who knows only when they last saw them. Found where they lie by someone passing; buried three days later, not before. |
+| Concealment | After driving on, a driver says nothing of it in conversation; having owned up, they talk about it. |
+| Whole months | Three months with the whole crime layer: no rule broken. |
+
+Every scenario and every whole month also checks that every belief has a plausible source.
+
 ### Compared with Python
 
-`tools/sim_reference.py` runs the Python simulation twice, 40 runs each (4 seasons x 10 seeds), with violence and
-accidents off: once with stealing off too (`sim_reference.json`, compared with Godot's crime switch off) and once
-with stealing on (`sim_reference_theft.json`, compared with Godot's crime switch on). It measures that simulation
-exactly as `sim_check.gd` measures the Godot one:
+`tools/sim_reference.py` runs the Python simulation three times, 40 runs each (4 seasons x 10 seeds):
+- with the crime layer off (`sim_reference.json`, compared with Godot's crime switch off);
+- with stealing only (`sim_reference_theft.json`, compared with Godot's crime on and violence off);
+- with the whole crime layer, as Python normally runs (`sim_reference_crime.json`, compared with Godot's crime
+  on).
+
+It measures that simulation exactly as `sim_check.gd` measures the Godot one:
 
 - 20 kinds of event per resident per day;
 - where people spend their hours, sleep, needs, money and open debts;
@@ -278,7 +360,13 @@ exactly as `sim_check.gd` measures the Godot one:
   - thefts, abandoned attempts, forced entries, ledger mistakes, discovered losses, spending from stashes,
     confessions, traces cleared away and accusations, per resident per day;
   - the share of thefts discovered, cash taken per theft, and the share of suspicions that fall on whoever
-    was really responsible.
+    was really responsible;
+- since pilot 3B, with the whole crime layer:
+  - fights, falls, collisions, deaths, interventions, stopping after a collision, damage found, people found
+    hurt or dead, people missed, treatments, repairs and burials, per resident per day;
+  - the share of collisions driven on from, the share of harmful incidents discovered, and how many people
+    come to know of a fight;
+- whether, and from which day, the grocery stalled (see Known differences).
 
 **What the test enforces:**
 - Routine and core memory statistics must match within tolerance: beliefs seen and told, gossip chats and items passed on.
@@ -288,6 +376,15 @@ exactly as `sim_check.gd` measures the Godot one:
   must steal as often as Python's within a factor of two: 0.0052 thefts per resident per day (31 thefts) against
   0.0060 (CI run 33). Of the 332 statistics (83 per season), one is outside its tolerance: the share of thefts
   discovered in the tension season (see Known differences).
+- With the whole crime layer, the core statistics must match on the months in which the grocery kept trading to
+  the end, on both sides, and the stall counts are reported. A stalled month is an absorbing state of the
+  shared rules: once both shop workers go shopping in their own shop, nobody buys again, and hunger, purchases
+  and sightings for the rest of the month are about the stall, not about anything else. With five months a
+  season, one stall moves the season's mean hunger by about six points. The stall itself is compared on its own,
+  over 40 towns a season (see Known differences).
+- Violence is too rare to compare season by season (a season's five months hold none to three of each kind), so
+  across all seasons together Godot must have harm, and the counts are reported against Python's rates. Each
+  mechanism is covered by a scenario test instead.
 
 ## Results (CI run 29)
 
@@ -326,7 +423,7 @@ Godot: 3 seeds per season, 30 days. Python: 10 seeds. Per resident per day unles
 - 30 simulated days with memory take 0.56-0.97 s on the Windows CI runner (pilot 1: 0.55-0.78 s).
 - 14 days take 0.35 s on Linux (pilot 1: 0.23 s).
 
-## Results with crime on (CI run 33)
+## Results with stealing only: crime on, violence off (CI run 33)
 
 Godot: 5 seeds per season, 30 days, crime on. Python: 10 seeds, stealing on, violence and accidents off. Rates
 are per month in a town of 10 (per resident per day x 300). Each cell is Godot / Python.
@@ -350,9 +447,68 @@ are per month in a town of 10 (per resident per day x 300). Each cell is Godot /
   beliefs seen and told, gossip) matches Python with crime on as with it off.
 - **Speed:** 30 simulated days with crime on take 0.57-1.47 s on the Windows CI runner.
 
+## Results with the whole crime layer (CI run 43)
+
+**All tests:** 107 tests and 17,858 checks pass on Windows. Linux reproduces all twelve pinned histories.
+
+**Routine and knowledge.** Godot: 5 seeds per season, 30 days. Python: 10 seeds. Compared on the months in
+which the grocery kept trading: all of Godot's but 3 normal-season months, and all of Python's but 2 crisis
+months. Per resident per day; each cell is Godot / Python.
+
+| Season | Meals | Purchases | Hunger | Seen beliefs | Told beliefs | Gossip chats |
+| --- | --- | --- | --- | --- | --- | --- |
+| normal | 1.91 / 1.94 | 0.205 / 0.227 | 26.0 / 26.0 | 7.7 / 7.8 | 1.30 / 1.35 | 1.20 / 1.21 |
+| scarcity | 1.89 / 1.96 | 0.251 / 0.257 | 27.4 / 25.6 | 10.6 / 8.7 | 2.01 / 1.78 | 1.57 / 1.43 |
+| crisis | 1.94 / 1.91 | 0.237 / 0.249 | 26.6 / 27.6 | 9.6 / 9.2 | 2.11 / 2.10 | 1.50 / 1.46 |
+| tension | 1.92 / 1.92 | 0.238 / 0.239 | 27.7 / 27.2 | 17.5 / 17.8 | 2.67 / 2.39 | 2.05 / 1.84 |
+
+Sleep, time at home and at work, and wages match as closely (for example, tension: work 0.297 / 0.300 of
+hours, wages 0.60 / 0.58).
+
+**Violence and accidents**, across all seasons: Godot's 20 months against Python's 40.
+
+| | Godot | Python | Per month in a town of 10 |
+| --- | --- | --- | --- |
+| Fights | 2 | 4 | 0.10 / 0.10 |
+| Falls | 2 | 5 | 0.10 / 0.13 |
+| Collisions (driven on from) | 4 (3) | 7 (4) | 0.20 / 0.18 |
+| Treated at the clinic | 4 | 7 | 0.20 / 0.18 |
+| Repairs | 3 | 2 | 0.15 / 0.05 |
+| Found lying hurt | 1 | 2 | 0.05 / 0.05 |
+| Deaths | 0 | 0 | |
+
+- **Who comes to know of a fight:** 7 and 8 people besides those in it in Godot's crisis and tension seasons,
+  against 8 and 8 in Python.
+- **Harm comes to light:** every fight, fall and collision on both sides is discovered. The victim knows of it,
+  someone finds them, the clinic treats them, or the debris is found.
+
+**Thefts with the whole crime layer** (per month in a town of 10, the trading months; Godot / Python):
+
+| Season | Thefts | Thefts discovered | Losses found | Accusations | Suspicions on the real culprit |
+| --- | --- | --- | --- | --- | --- |
+| normal | 1.0 / 0.8 | 100% / 100% | 1.5 / 1.4 | 1.5 / 2.1 | 68% / 23% |
+| scarcity | 2.4 / 1.3 | 93% / 100% | 2.8 / 1.8 | 4.4 / 3.6 | 37% / 19% |
+| crisis | 1.8 / 2.5 | 75% / 100% | 2.2 / 3.1 | 3.2 / 4.5 | 22% / 12% |
+| tension | 3.0 / 2.8 | 100% / 97% | 2.8 / 3.1 | 6.8 / 5.6 | 28% / 19% |
+
+- **Outside tolerance:** of the non-core statistics, two are: confession beliefs in the normal and scarcity
+  seasons (see Known differences).
+- **Speed:** 30 simulated days with the whole crime layer take 0.64-1.68 s on the Windows CI runner and 1.2 s
+  on Linux.
+
 ## Known differences from Python
 
-### With crime on (pilot 3A)
+### With the whole crime layer (pilot 3B)
+
+| Difference | Godot | Python | Why |
+| --- | --- | --- | --- |
+| The grocery stalls for the rest of the month | 3 of 5 normal-season months in the comparison; 16 of 160 months in a 40-town survey (13 of 160 with crime off) | none of 10 normal-season months; 2 of 10 crisis months; 10 of 160 in the same survey (11 with crime off) | The same rule on both sides, at the same rate (see the realism concerns below); the towns differ, so it falls in different seasons. The survey counted stalls in 40 towns a season on each side (Godot in CI run 42, Python over its seeds 1 to 40), measured the same way (`_stall_day` in `test_sim.gd`, `stall_day` in `tools/sim_reference.py`). Every stalled month, on both sides, is a town in which both shop workers live in households of two or more. This is why routine is compared on the months in which the grocery kept trading. |
+| How long someone has been missing | from when the person checking on them last saw them | the true time of death | Python writes the time of death into the carer's belief, which they cannot know. Godot uses the last time the carer saw the person (or leaves it open if they never did), so that no belief reads the truth. No event changes, only the start of that belief. |
+| Repairs | 3 in 20 months: every driver who drove on | 2 in 40 months, of 4 who drove on | Rare on both sides. A guilty driver mends the damage once the vehicle is at the workshop and the repair outscores their other choices. |
+| Confessions | 4 in 20 months, all after thefts | 2 in 40 months | Rare. In the normal and scarcity seasons, more of Godot's suspicions fell on the real culprit (68% and 37%, against 23% and 19%, over few accusations), and an accused culprit may confess. A confession is then told all over town, so `confession` beliefs in those two seasons are the two non-core statistics outside tolerance. |
+| The intoxication noted on a collision or fall | rounded half away from zero | rounded half to even | Only the number in the event's data, and only when it ends in exactly .5. |
+
+### With crime on, violence off (pilot 3A)
 
 | Difference | Godot | Python | Why |
 | --- | --- | --- | --- |
@@ -365,8 +521,9 @@ are per month in a town of 10 (per resident per day x 300). Each cell is Godot /
 
 ### Without crime (pilots 1 and 2)
 
-All are within the test tolerance. With crime on, the first and the ledger-mistake rows below no longer apply:
-Godot then forms suspicions (0.07-0.32 a day) and makes ledger mistakes as Python does.
+All are within the test tolerance. With crime on, the first, the ledger-mistake and the violent-argument rows
+below no longer apply: Godot then forms suspicions (0.07-0.32 a day), makes ledger mistakes, and fights, as
+Python does.
 
 | Difference | Godot | Python | Why |
 | --- | --- | --- | --- |
@@ -383,49 +540,76 @@ Godot then forms suspicions (0.07-0.32 a day) and makes ledger mistakes as Pytho
 
 **Limitations of pilot 2:**
 - **Dormant suspicion pipeline, without crime.** Suspicion inference, a resident's stake in an incident, accusations, and the "nearby sightings become worth mentioning after an incident" rule have nothing to work on until something is lost or damaged. With crime on (pilot 3A) they are active.
-- **Kinds of belief not yet produced.** With crime on, loss, damage, confession, stash and theft_self are produced. Injury, struck, fall, death, missing, collision_self, vehicle_damage, repair and treated wait for pilot 3B.
+- **Kinds of belief produced only with crime on.** Loss, damage, confession, stash and theft_self (pilot 3A); assault, injury, struck, fall, death, missing, collision_self, saw_collision, vehicle_damage and repair (pilot 3B).
 - **The town's history is told once, at the start.** Old grudges and debts are known to their parties, and told to some others on Day 1 at minute 0, as in Python. The told beliefs point at the history record, not at a chat.
 - **Developer-only provenance.** Beliefs are not yet visible in the game, which still plays Python-made cases. Exporting testimony from beliefs belongs to the case-packaging pilot.
 
-## Next: pilot 3B, violence and accidents
+## Realism concerns, shared with Python
 
-**Recommended scope.** Port the rest of the Python crime layer: about 470 lines of Python, roughly the size of
-pilot 3A, behind the same `"crime"` switch (or a second switch, `"violence"`, if pilot 3A's pinned histories
-should stay as they are).
-- **Assault**, replacing `escalations_deferred`: `assault`, `injure`, `kill`. An argument that turns violent;
-  injuries of two severities; rarely a death. The aggressor is responsible; blood at the scene is a trace.
-- **Falls and collisions:**
-  - `check_fall`: someone drunk on Mill Road after dark falls into the ditch.
-  - `check_collision`: a driver on Mill Road, far more likely after dark and after drink, hits a walker or the
-    fence.
-  - Both leave debris and vehicle damage as traces.
-- **Afterwards:**
-  - `clinic` and the injured resident's account of what happened (`patient_account`), which can be wrong or a
-    lie;
-  - `repair`: a guilty driver may get the car mended quietly, with scrap in the workshop as a trace;
-  - `notice_injury`: people see someone hurt.
-- **People found or missed:**
-  - `found`: someone lying hurt is found, and the finder raises the alarm;
-  - `_missed_people`: someone who died unseen is missed after half a day, and the person fondest of them goes to
-    check on them;
-  - the body is buried after three days.
-- **Hooks:** injury and being "down" in needs and decisions (the clinic and repair options, sleeping it off,
-  `truncate` for someone who cannot walk on), and the incident families assault, collision and fall.
+These are Python's own rules, ported faithfully and left as they are (the brief for pilot 3B: no redesign for
+the sake of parity). Each would change histories on both sides, so each needs a decision before it is changed.
 
-**Verification, in the same style as pilot 3A:**
-- **Python reference.** Regenerate it with the whole crime layer on. Compare assaults, injuries, falls,
-  collisions, deaths, clinic visits and repairs per season, and how many people come to know of each.
-- **Integrity.** Every injury has a cause, every repair has damage before it, a death ends that resident's
-  whereabouts, and nobody moves or acts while down.
-- **Provenance.** An injury is known by those who saw it, treated it, found the person or were told. A
-  patient's account is their own claim, which may be untrue. A driver's knowledge of their collision is `self`
-  and concealed until it is reported.
-- **Scenario tests:**
-  - a fight seen and heard;
-  - a fall nobody sees, found the next morning;
-  - a hit-and-run with a quiet repair;
-  - a confession after a fight;
-  - someone missed by a carer.
+- **The grocery can stall for the rest of the month.** On a morning the shop opens, the grocer's and the
+  assistant's households may both have an empty pantry.
+  - "Shop" then outscores "work". Shopping scores 25, plus 3 for every unit short of 8 per person, plus 35 for
+    an empty pantry: 108 for a household of two, 84 for one person. Work scores at most 95 (75, plus up to 20
+    for diligence). So a worker from a household of two always goes shopping, and one living alone usually
+    does unless they are diligent.
+  - Both go shopping in their own shop. Buying needs someone else serving, so neither can buy, neither counts
+    as serving, and nobody else can buy either. They try again every hour, for good.
+  - The town eats at the pub while money lasts, and goes hungry: mean hunger 40-58 in a stalled month, against
+    about 26.
+  - It happens in about 6-10% of months on both sides, most often on a Monday, after a Sunday when the shop
+    is shut and pantries run down.
+  - A small fix would be to let staff on shift serve themselves at their own shop, or not to offer them
+    "shop" there. It would also end the next oddity.
+- **A grocer living alone and keen on work never restocks their own pantry.** They will not leave work to shop,
+  and cannot buy from themselves when the assistant is out, so they eat at the pub. In Python's normal season
+  such a grocer's pantry is often empty when the shop opens, in some towns on most days.
+- **Every guilty driver tells the mechanic the same lie** ("Hit a deer out on the ridge road a few nights back"),
+  and every repair note reads alike. That is fine for the simulation, but thin for cases.
+- **Someone seriously hurt on Mill Road at night whom nobody passes gets home on their own at 10:00**, however
+  bad the injury. Untreated injuries never get worse.
+- **Deaths are very rare:** none in Godot's 20 months or Python's 40. Only 1.5-3.5% of fights and 8% of walkers hit
+  are fatal. A case generator that wants a death will have to look through many towns or longer runs.
 
-**Untouched:** testimony export, suitability, case packaging, difficulty and the UI. After pilot 3B, the whole
-Python simulation would be native, and the next pilot would turn its incidents into Godot-made cases.
+## Next: pilot 4, evidence, case validation and saved case generation
+
+**Recommended scope.** Port the case pipeline in `mystery/cases`, so that a town simulated in Godot becomes a
+case the existing Godot game can play, with no Python anywhere. That is about 2,500 lines of Python:
+- `export.py` (958 lines), building a case from an incident;
+- `testimony.py` (431), what each resident says;
+- `package.py` (364), the case package;
+- `suitability.py` (314), whether a case is investigable and how;
+- `library.py` (281), the saved library;
+- `relevance.py` (152), which records and traces bear on the case.
+
+- **Choosing an incident.** Choose from the registry's candidates: discovered, and not owned up to.
+  - Crimes come first: thefts, hit-and-runs, fights.
+  - Accidents stay out unless chosen on purpose. A fall becomes a case only when it is deliberately selected,
+    for instance one whose victim believes they were pushed; never automatically.
+  - A stalled month would be a poor town to set a case in until the stall is decided.
+- **Evidence and records.** What the investigator can find when the case starts:
+  - the traces still there: forced doors, blood, debris, scrap, and stashes found only by searching;
+  - the records: the ledger, the pub's tabs, the clinic log and the workshop orders;
+  - for each, whether it is connected to the case, unrelated or uncertain, and where any money came from.
+- **Testimony from beliefs, never from the truth.** Each resident's accounts carry their source, how sure they
+  are and the developer-only errors (lies, mistakes, drifted times). The simulation already keeps all of this
+  provenance.
+- **Validation.**
+  - Suitability verdicts (obvious, playable, ambiguous, unsolvable), judged by independent channels.
+  - The spoiler boundary: a case never reveals what no resident knows or could find.
+  - The existing case-format validator.
+- **Saved case generation.** Packages are written in the existing case format and loaded by the existing
+  loader, so saves, the bundled library and imported cases keep working.
+
+**Verification:**
+- Every generated case loads and validates in the existing Godot loader and validator, and plays through the
+  existing end-to-end tests.
+- Every testimony line traces back to a belief, and every belief to its source.
+- No accident becomes a case unless selected.
+- Pinned case packages (digests) are reproduced on Windows and Linux.
+- **Compared with Python** statistically, not event by event (the random draws differ): which incidents are
+  chosen, how many channels each case has, the spread of verdicts, and how much testimony there is.
+
+**Untouched:** difficulty settings and the UI.

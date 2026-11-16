@@ -235,7 +235,7 @@ jobs:
         run: |
           set +e
           timeout -k 10 300 "$GODOT" --headless --path godot -s res://tests/run_sim.gd -- \
-            --seed=21 --days=30 --profile=tension --crime --out="$PWD/sim-demo" > sim-demo/run-crime.log 2>&1
+            --seed=1 --days=30 --profile=tension --crime --out="$PWD/sim-demo" > sim-demo/run-crime.log 2>&1
           code=$?
           set -e
           cat sim-demo/run-crime.log
