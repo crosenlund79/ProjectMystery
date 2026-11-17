@@ -1,5 +1,10 @@
 # Project Mystery
 
+> **Status: PARKED / ON HOLD** (since 17 November 2026). The simulation and case generation work, and
+> everything is kept as it was, but the gameplay format did not prove rewarding enough to continue. Before
+> resuming, read [`docs/PROJECT_HIBERNATION.md`](docs/PROJECT_HIBERNATION.md): why the project stopped, what
+> works, how to run it, known issues, and where to pick it up.
+
 > *Build a town that produces true histories — and let the player discover how difficult it is to know the truth.*
 
 A prototype of the concept in [`docs/concept.md`](docs/concept.md), in two parts: a **Godot 4 game** with a
